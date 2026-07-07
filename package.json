@@ -1,0 +1,27 @@
+{
+  "name": "extends-hono",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./src/*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.11",
+    "hono": "^4.12.18",
+    "vite": "^8.0.11"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "typescript": "^5.9.3"
+  },
+  "author": "see7788",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/see7788/extends-hono.git"
+  },
+  "homepage": "https://github.com/see7788/extends-hono",
+  "bugs": {
+    "url": "https://github.com/see7788/extends-hono/issues"
+  }
+}
