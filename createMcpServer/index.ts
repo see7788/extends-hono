@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import publicMcp from "./public/index.js";
+import publicMcp from "extends-hono/createMcpServer/public";
 
 const mcp = Object.assign(new Hono().all("/", async (ctx) => {
   if (!publicMcp.server.isConnected()) await publicMcp.server.connect(publicMcp.transport);
