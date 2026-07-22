@@ -3,23 +3,25 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Hono, type Handler } from "hono";
-import { build as viteBuild, createServer as createViteServer } from "vite";
 
-export default async function createViteRouter({ root, basePath }: { root: string, basePath?: string }): Promise<Hono> {
+export default async function createViteRouter({ root, basePath,staticRoot }: { root: string, basePath?: string ,staticRoot?:string}): Promise<Hono> {
   const resolvedRoot = path.resolve(root);
   const pkgname = path.basename(resolvedRoot);
   const base = basePath ?? `/${pkgname}`;
+  const hmrPort = 24678 + Array.from(pkgname).reduce((sum, char) => sum + char.charCodeAt(0), 0) % 1000;
   if (!pkgname) {
     throw new Error("Missing vite package name");
   }
 
   let handler: Handler;
+  const vitePackage = "vite";
 
   if (process.env.NODE_ENV === "development") {
     if (!fs.existsSync(resolvedRoot)) {
       throw new Error(`!fs.existsSync(${resolvedRoot})`);
     }
 
+    const { createServer: createViteServer } = await import(vitePackage);
     const vite = await createViteServer({
       root: resolvedRoot,
       base,
@@ -27,7 +29,9 @@ export default async function createViteRouter({ root, basePath }: { root: strin
       server: {
         middlewareMode: true,
         allowedHosts: true,
-        ws: false,
+        hmr: {
+          port: hmrPort,
+        },
         watch: {
           ignored: [
             "**/node_modules/.vite/**",
@@ -42,9 +46,10 @@ export default async function createViteRouter({ root, basePath }: { root: strin
         vite.middlewares(c.env.incoming, c.env.outgoing, () => resolve(next()));
       });
   } else {
-    const distRoot = path.join(resolvedRoot, "dist");
+    const distRoot = staticRoot||path.join(resolvedRoot, "dist");
 
     if (!fs.existsSync(distRoot)) {
+      const { build: viteBuild } = await import(vitePackage);
       await viteBuild({
         root: resolvedRoot,
         base,
