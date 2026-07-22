@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
-    "./*": "./*/index.ts"
+    "./*.ts": "./*.ts"
   },
   "dependencies": {
     "@hono/mcp": "^0.3.1",
