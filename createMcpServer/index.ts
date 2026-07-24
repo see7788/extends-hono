@@ -1,12 +1,28 @@
-import { Hono } from "hono";
-import publicMcp from "extends-hono/createMcpServer/public.ts";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { Handler } from "hono";
+import browser from "./mcp/browser";
+import codegraph from "./mcp/codegraph";
+import PublicMcp from "./public";
 
-const mcp = Object.assign(new Hono().all("/", async (ctx) => {
-  if (!publicMcp.server.isConnected()) await publicMcp.server.connect(publicMcp.transport);
-  return publicMcp.transport.handleRequest(ctx);
-}), {
-  registerTool: publicMcp.server.registerTool.bind(publicMcp.server),
-  responseContentRead: publicMcp.responseContentRead,
-});
+const mcps = { browser, codegraph };
 
-export default mcp;
+export default class Mcp {
+  private readonly core: PublicMcp;
+  honoHandler: Handler
+
+  constructor(...args: ConstructorParameters<typeof McpServer>) {
+    this.core = new PublicMcp(new McpServer(...args));
+    this.honoHandler= this.core.handler
+  }
+
+  mcpRegister(name: keyof typeof mcps) {
+    mcps[name](this.core);
+    return this;
+  }
+
+  requestToolRegister(definition: Parameters<PublicMcp["requestToolRegister"]>[0]) {
+    this.core.requestToolRegister(definition);
+    return this
+  }
+
+}
