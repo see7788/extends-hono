@@ -8,24 +8,15 @@ importers:
 
   .:
     dependencies:
-      '@hono/mcp':
-        specifier: ^0.3.1
-        version: 0.3.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(hono-rate-limiter@0.5.3(hono@4.12.27))(hono@4.12.27)(zod@4.4.3)
       '@hono/node-server':
         specifier: ^1.19.11
         version: 1.19.14(hono@4.12.27)
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.29.0
-        version: 1.29.0(zod@4.4.3)
       hono:
         specifier: ^4.12.18
         version: 4.12.27
       vite:
         specifier: ^8.0.11
         version: 8.1.0(@types/node@26.0.1)(esbuild@0.28.1)(tsx@4.22.4)
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^26.0.1
@@ -33,6 +24,28 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  libs/mcpServer:
+    dependencies:
+      '@hono/mcp':
+        specifier: ^0.3.1
+        version: 0.3.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(hono-rate-limiter@0.5.3(hono@4.12.27))(hono@4.12.27)(zod@4.4.3)
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@4.4.3)
+    devDependencies:
+      '@types/node':
+        specifier: ^26.0.1
+        version: 26.0.1
+      hono:
+        specifier: ^4.12.18
+        version: 4.12.27
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   libs/vite.config:
     devDependencies:

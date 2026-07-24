@@ -8,11 +8,11 @@ const mcps = { browser, codegraph };
 
 export default class Mcp {
   private readonly core: PublicMcp;
-  honoHandler: Handler
+  readonly honoHandler: Handler;
 
   constructor(...args: ConstructorParameters<typeof McpServer>) {
     this.core = new PublicMcp(new McpServer(...args));
-    this.honoHandler= this.core.handler
+    this.honoHandler = this.core.handler;
   }
 
   mcpRegister(name: keyof typeof mcps) {
@@ -22,7 +22,7 @@ export default class Mcp {
 
   requestToolRegister(definition: Parameters<PublicMcp["requestToolRegister"]>[0]) {
     this.core.requestToolRegister(definition);
-    return this
+    return this;
   }
 
 }
