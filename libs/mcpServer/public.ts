@@ -97,13 +97,13 @@ export default class PublicMcp {
   }
 
   requestToolRegister<InputArgs extends z.ZodRawShape>(definition: Omit<ToolDefinition, "inputSchema" | "request"> & {
-    inputSchema: InputArgs;
+    inputSchema: z.ZodObject<InputArgs>;
     request: (arguments_: z.output<z.ZodObject<InputArgs>>) => Response | Promise<Response>;
   }): void {
     if (this.registration) throw new Error("MCP configuration cannot change after registration starts.");
     this.server.registerTool<AnySchema, z.ZodObject<InputArgs>>(
       definition.name,
-      { title: definition.title, description: definition.description, inputSchema: z.object(definition.inputSchema), annotations: definition.annotations },
+      { title: definition.title, description: definition.description, inputSchema: definition.inputSchema, annotations: definition.annotations },
       async arguments_ => {
         const response = await definition.request(arguments_);
         const text = await response.text();
