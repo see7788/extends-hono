@@ -8,7 +8,7 @@ import viteConfig from "vite.config/vite";
 export default viteConfig(
   {
     honoEntry: "src/index.ts",
-    hostname: "127.0.0.1",
+    honoHost: "127.0.0.1",
     honoPort: 3005,
   },
   "../reactapp",

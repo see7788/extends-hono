@@ -42,11 +42,11 @@ const webSocketPortUse = (server: ViteDevServer) => {
 export default (
   {
     honoEntry,
-    hostname,
+    honoHost,
     honoPort,
   }: {
     honoEntry: string;
-    hostname: string;
+    honoHost: string;
     honoPort: number;
   },
   ...reactRoots: string[]
@@ -142,9 +142,9 @@ export default (
               mode: configEnv.mode,
               root: project.root,
               server: {
-                host: hostname,
+                host: honoHost,
                 port: vitePort,
-                ws: { host: hostname },
+                ws: { host: honoHost },
               },
             });
             secondaryServers.push(server);
@@ -191,9 +191,9 @@ export default (
     plugins: [lifecycle],
     root: primaryProject.root,
     server: {
-      host: hostname,
+      host: honoHost,
       port: vitePort,
-      ws: { host: hostname },
+      ws: { host: honoHost },
     },
   });
 };
