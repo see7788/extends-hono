@@ -5,7 +5,7 @@ import browser from "./mcp/browser";
 import codegraph from "./mcp/codegraph";
 import PublicMcp from "./public";
 
-const mcps = { browser, codegraph };
+const mcps = { browser, codegraph } as const;
 
 export default class Mcp {
   private readonly core: PublicMcp;
