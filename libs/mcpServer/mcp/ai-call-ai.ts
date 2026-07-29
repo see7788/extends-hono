@@ -8,9 +8,10 @@ const contactSchema = z.object({
   workspacePath: z.string().trim().min(1).refine(isAbsolute, {
     message: "workspacePath must be an absolute path",
   }),
-  remoteDebuggingPort: z.coerce.number().int().min(1).max(65535),
+  remoteDebuggingPort: z.coerce.number().int().min(1).max(65535).optional(),
 });
 const callSchema = contactSchema.extend({
+  remoteDebuggingPort: z.coerce.number().int().min(1).max(65535),
   senderWorkspacePath: z.string().trim().min(1).refine(isAbsolute, {
     message: "senderWorkspacePath must be an absolute path",
   }),
@@ -29,12 +30,60 @@ const callSchema = contactSchema.extend({
 
 export default new Register().register(
   "/WORKSPACE_AI_CONTACT",
-  new Hono().get("/", zValidator("query", contactSchema), context => {
+  new Hono().get("/", zValidator("query", contactSchema), async context => {
     const input = context.req.valid("query");
+    const startCommand = `$code="$env:LOCALAPPDATA\\Programs\\Microsoft VS Code\\Code.exe"; Start-Process -FilePath $code -ArgumentList @("--remote-debugging-port=${input.remoteDebuggingPort ?? "<未占用端口>"}","--new-window",'${input.workspacePath.replaceAll("'", "''")}')`;
+    if (!input.remoteDebuggingPort) {
+      return context.text(
+        `当前 AI 没有可验证的 remoteDebuggingPort，不能提供 WORKSPACE_AI_CONTACT。请关闭当前工作区窗口后执行：${startCommand}`,
+        409,
+      );
+    }
+    const debuggerUrl = `http://127.0.0.1:${input.remoteDebuggingPort}`;
+    let response: Response;
+    try {
+      response = await fetch(`${debuggerUrl}/json`);
+    } catch {
+      return context.text(
+        `当前 AI 的 VS Code 远程调试端口 ${input.remoteDebuggingPort} 不可访问，不能提供 WORKSPACE_AI_CONTACT。请关闭当前工作区窗口后执行：${startCommand}`,
+        409,
+      );
+    }
+    if (!response.ok) {
+      return context.text(
+        `当前 AI 的 VS Code 远程调试端口 ${input.remoteDebuggingPort} 返回 ${response.status}，不能提供 WORKSPACE_AI_CONTACT。请关闭当前工作区窗口后执行：${startCommand}`,
+        409,
+      );
+    }
+    const targets = await response.json() as Array<{
+      id: string;
+      parentId?: string;
+      title: string;
+      type: string;
+      url: string;
+    }>;
+    const workspaceName = basename(input.workspacePath);
+    const pages = targets.filter(target => (
+      target.type === "page"
+      && target.title.toLocaleLowerCase().includes(workspaceName.toLocaleLowerCase())
+    ));
+    const codexWebviews = pages.length === 1
+      ? targets.filter(target => (
+          target.type === "iframe"
+          && target.parentId === pages[0]!.id
+          && new URL(target.url).searchParams.get("extensionId") === "openai.chatgpt"
+        ))
+      : [];
+    if (pages.length !== 1 || codexWebviews.length !== 1) {
+      return context.text(
+        `当前端口 ${input.remoteDebuggingPort} 未找到唯一的 ${input.workspacePath} VS Code 窗口及其 Codex 面板，不能提供 WORKSPACE_AI_CONTACT。请确认 Codex 面板已打开；需要重新启动时执行：${startCommand}`,
+        409,
+      );
+    }
     return context.text([
       "<<<WORKSPACE_AI_CONTACT>>>",
       `我是 ${input.workspacePath} 路径的 AI。`,
-      `运行前提：仅限本机；http://127.0.0.1:3005 服务运行中；我的 VS Code 使用 remoteDebuggingPort ${input.remoteDebuggingPort} 启动并已打开 Codex 面板。需要启动我时执行：$code="$env:LOCALAPPDATA\\Programs\\Microsoft VS Code\\Code.exe"; Start-Process -FilePath $code -ArgumentList @("--remote-debugging-port=${input.remoteDebuggingPort}","--new-window",'${input.workspacePath.replaceAll("'", "''")}')`,
+      `运行前提：仅限本机；http://127.0.0.1:3005 服务运行中；我的 VS Code 使用 remoteDebuggingPort ${input.remoteDebuggingPort} 启动并已打开 Codex 面板。需要启动我时执行：${startCommand}`,
       "你与我说话，执行下面的函数；senderWorkspacePath 必须是你自己的完整工作区路径，senderRemoteDebuggingPort 必须是你自己的 VS Code 实际远程调试端口：",
       "async (senderWorkspacePath, senderRemoteDebuggingPort, msg) => {",
       "  const senderResponse = await fetch('http://127.0.0.1:3005/ai-call-ai/WORKSPACE_AI_CONTACT?' + new URLSearchParams({ workspacePath: senderWorkspacePath, remoteDebuggingPort: String(senderRemoteDebuggingPort) }));",
@@ -57,7 +106,8 @@ export default new Register().register(
   [
     "当用户询问“你的通话联系方式”“你的通信方式”“你的对话接口”或任何近似意思，想把当前 Codex 的联系信息复制给另一个 AI 时使用。",
     "识别到该意图后必须立即调用本工具并把返回文本原样回复，禁止自行改写、解释、另造一套联系方式或要求用户理解背后步骤。",
-    "当前 AI 直接使用自己已知的 workspacePath 和启动该 VS Code 窗口时使用的 remoteDebuggingPort，不向用户重复询问已经知道的值。",
+    "当前 AI 直接使用自己已知的 workspacePath 和启动该 VS Code 窗口时使用的 remoteDebuggingPort，不向用户重复询问已经知道的值；没有 remoteDebuggingPort 时仍立即调用本工具，由工具返回准确的不可联系原因和启动命令。",
+    "工具只有在真实验证远程调试端口、唯一工作区窗口和唯一 Codex WebView 后才返回联系卡，禁止为普通启动或错误端口生成假名片。",
     "成功返回带 WORKSPACE_AI_CONTACT 标记、可原样复制的完整联系卡；卡片包含本机环境前提、准确启动命令、可执行联系函数、自动生成发送方回信卡的步骤和全部发送保护，使双方可以直接互相回复。",
   ].join(" "),
   {
