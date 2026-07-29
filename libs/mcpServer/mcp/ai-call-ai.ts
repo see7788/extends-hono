@@ -22,18 +22,20 @@ export default new Register().register(
   new Hono().get("/", zValidator("query", contactSchema), context => {
     const input = context.req.valid("query");
     return context.text([
-      "这是我的 Workspace AI 通话联系方式。请把下面整段原样复制给需要联系我的 AI：",
+      `我是 ${input.workspacePath} 路径的 AI。你与我说话的方法是：调用 ai-call-ai.call-workspace-ai.POST，并将下面的 arguments 作为参数传入；只把 message 改成你要对我说的话。`,
       "",
       "<<<WORKSPACE_AI_CONTACT>>>",
       JSON.stringify({
-        version: 1,
         tool: "ai-call-ai.call-workspace-ai.POST",
-        workspacePath: input.workspacePath,
-        remoteDebuggingPort: input.remoteDebuggingPort,
+        arguments: {
+          workspacePath: input.workspacePath,
+          remoteDebuggingPort: input.remoteDebuggingPort,
+          message: "<你要对我说的话>",
+        },
       }, null, 2),
       "<<<END_WORKSPACE_AI_CONTACT>>>",
       "",
-      "联系规范：对方 AI 先向用户确认本次 message，再把联系卡中的 workspacePath、remoteDebuggingPort 和 message 一起传给 tool；缺少任何参数时必须先询问用户，不得猜测。",
+      "调用成功后，message 会发送到我的 Codex 对话；不要修改 workspacePath 或 remoteDebuggingPort。",
     ].join("\n"));
   }),
   contactSchema,
