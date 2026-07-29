@@ -15,10 +15,17 @@ type Definition = {
   namespace: string;
   transport: () => Transport | Promise<Transport>;
 };
+type ToolContractAnnotations = NonNullable<Tool["annotations"]> & Required<Pick<
+  NonNullable<Tool["annotations"]>,
+  "readOnlyHint" | "destructiveHint" | "idempotentHint" | "openWorldHint"
+>>;
 type Replacement = Partial<Pick<
   Tool,
-  "name" | "title" | "description" | "inputSchema" | "outputSchema" | "annotations" | "_meta"
->> & { toolName: string };
+  "name" | "title" | "description" | "inputSchema" | "outputSchema" | "_meta"
+>> & {
+  annotations?: ToolContractAnnotations;
+  toolName: string;
+};
 type ToolCall = (
   name: string,
   arguments_: Record<string, unknown>,
@@ -76,10 +83,28 @@ export default class RegisterFromNpm<
       }
     }
     for (const tool of tools) {
+      const replacement = this.replacements.find(item => item.toolName === tool.name);
       const externalTool: Tool = {
         ...tool,
-        ...this.replacements.find(replacement => replacement.toolName === tool.name),
+        ...replacement,
+        annotations: {
+          ...tool.annotations,
+          ...replacement?.annotations,
+        },
       };
+      if (!externalTool.description?.trim()) {
+        throw new Error(`Tool "${externalTool.name}" from ${namespace} has no consumption description.`);
+      }
+      const annotations = externalTool.annotations;
+      if (
+        !annotations
+        || typeof annotations.readOnlyHint !== "boolean"
+        || typeof annotations.destructiveHint !== "boolean"
+        || typeof annotations.idempotentHint !== "boolean"
+        || typeof annotations.openWorldHint !== "boolean"
+      ) {
+        throw new Error(`Tool "${externalTool.name}" from ${namespace} has incomplete annotations.`);
+      }
       server.registerTool(`${namespace}.${externalTool.name}`, {
         title: externalTool.title,
         description: externalTool.description,

@@ -130,12 +130,13 @@ const mcp = new RegisterFromNpm().register({
   name: "explore",
   title: "检索统一 CodeGraph 代码知识",
   description: [
-    "从 projectPath 向上解析最近公共工作区中长期共享的 CodeGraph 索引，返回相关源码、调用路径和影响范围。",
-    "跨项目调用、package 依赖和影响分析使用同一共享索引保持完整关系；当前问题通过 projectPath 和 query 收窄。",
-    "源码目录是唯一事实来源，CodeGraph 是可重建的代码知识缓存。",
-    "索引范围按真实消费关系精确开放项目；任务需要时追加并保留共享工具和项目，范围收紧由使用者集中维护。",
-    "准备调整 .gitignore、索引、锁或 daemon 生命周期时，先调用 codegraph.scope_maintenance 取得维护协议。",
-    "目标路径缺少有效共享索引时准确报告 CodeGraph Index Required，并说明加载 MCP、重启会话或在公共工作区建立索引的恢复条件。",
+    "用于源码符号定位、读取已知源码文件或符号、查询 callers/callees、追踪入口 A 到目标 B 的调用路径，以及评估修改的 blast radius。",
+    "projectPath 可省略；提供时必须是目标项目或其内部目录的绝对路径，工具从该路径向上解析最近的现有 CodeGraph 索引；省略时使用服务当前默认项目。",
+    "query 必填，可写自然语言、文件名或符号名；追踪流程时在同一次 query 中同时提供关键入口、目标和必要中间符号。",
+    "成功返回与 query 相关的逐行源码锚点、文件路径、符号关系、callers/callees、调用路径、影响范围及可用的索引状态提示；只读取索引和源码，不修改文件、索引或进程。",
+    "已返回的 AST 关系和调用路径直接作为结构事实使用，不再用全文搜索重建；全文搜索只补充配置、文档和其他未索引文本，这些内容不属于本工具的主要保证范围。",
+    "结构分析不能替代 TypeScript、测试、构建、接口响应或真实运行观察；实现修改后仍须使用对应生产者验证。",
+    "projectPath 未解析到有效索引时返回准确的 CodeGraph Index Required；随后调用 codegraph.scope_maintenance.GET 取得索引范围、同步、锁和恢复权威，再由具备相应文件或 CodeGraph CLI 能力的维护入口执行恢复。",
   ].join(" "),
   annotations: {
     readOnlyHint: true,
@@ -150,9 +151,9 @@ const mcp = new RegisterFromNpm().register({
   )),
   z.object({}),
   [
-    "在 AI 准备维护 CodeGraph 的 .gitignore、索引范围、写锁或 daemon 生命周期前调用。",
-    "返回按真实消费者精确开放项目、多 AI 只追加并集、基线串行 patch、同步验证、任务后保留和集中收紧的完整只读规范。",
-    "本工具只提供维护协议，不修改文件、索引或进程。",
+    "在准备维护 CodeGraph 的 .gitignore、索引范围、同步、写锁或 daemon 生命周期，或 codegraph.explore 返回 CodeGraph Index Required 时调用。",
+    "无输入；成功返回索引范围、并发、同步、验证和恢复协议的 JSON 文本；只提供维护权威，不读取实时索引状态，也不修改文件、索引或进程。",
+    "调用失败表示本 MCP 服务不可用；恢复服务后重试。需要当前索引事实时使用现有 CodeGraph 状态能力或人工检查，本接口不伪造实时状态。",
   ].join(" "),
   {
     readOnlyHint: true,

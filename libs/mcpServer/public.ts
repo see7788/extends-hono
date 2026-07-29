@@ -12,6 +12,10 @@ import type {
 } from "hono/types";
 import type { z } from "zod";
 
+type ToolContractAnnotations = ToolAnnotations & Required<Pick<
+  ToolAnnotations,
+  "readOnlyHint" | "destructiveHint" | "idempotentHint" | "openWorldHint"
+>>;
 type Definition<
   Path extends `/${string}` = `/${string}`,
   HonoType extends HonoBase<any, any, any, any> = Hono,
@@ -20,8 +24,8 @@ type Definition<
   path: Path,
   hono: HonoType,
   inputSchema: InputSchema,
-  description?: string,
-  annotations?: ToolAnnotations,
+  description: string,
+  annotations: ToolContractAnnotations,
 ];
 export default class Register<CurrentSchema extends Schema = {}> {
   private definitionsValue: Definition<any, any, any>[] = [];
@@ -39,7 +43,18 @@ export default class Register<CurrentSchema extends Schema = {}> {
     HonoBase<HonoEnv, ChildSchema, HonoBasePath, HonoCurrentPath>,
     InputSchema
   >) {
-    const [path, hono] = definition;
+    const [path, hono, , description, annotations] = definition;
+    if (!description.trim()) {
+      throw new Error(`MCP action "${path}" requires a consumption description.`);
+    }
+    if (
+      typeof annotations.readOnlyHint !== "boolean"
+      || typeof annotations.destructiveHint !== "boolean"
+      || typeof annotations.idempotentHint !== "boolean"
+      || typeof annotations.openWorldHint !== "boolean"
+    ) {
+      throw new Error(`MCP action "${path}" requires complete annotations.`);
+    }
     const [route, ...routes] = hono.routes;
     if (
       !route
