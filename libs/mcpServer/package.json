@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@hono/mcp": "^0.3.1",
+    "@hono/zod-validator": "^0.9.0",
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "peerDependencies": {
