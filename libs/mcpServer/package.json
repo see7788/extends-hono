@@ -2,17 +2,21 @@
   "name": "mcp-server",
   "version": "0.1.0",
   "type": "module",
+  "exports": {
+    "./index.ts": "./index.ts",
+    "./public.ts": "./public.ts"
+  },
   "dependencies": {
     "@hono/mcp": "^0.3.1",
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "peerDependencies": {
-    "hono": "^4.12.18",
+    "hono": "4.12.30",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",
-    "hono": "^4.12.18",
+    "hono": "4.12.30",
     "typescript": "^5.9.3",
     "zod": "^4.4.3"
   }

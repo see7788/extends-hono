@@ -1,116 +1,118 @@
-import { StreamableHTTPTransport } from "@hono/mcp";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { AnySchema } from "@modelcontextprotocol/sdk/server/zod-compat.js";
-import { CallToolResultSchema, type CallToolResult, type Tool, type ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
-import type { Handler } from "hono";
-import { z } from "zod";
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+import { Hono, type Env } from "hono";
+import type { HonoBase } from "hono/hono-base";
+import { METHODS } from "hono/router";
+import type {
+  BlankEnv,
+  MergePath,
+  MergeSchemaPath,
+  Schema,
+} from "hono/types";
+import type { z } from "zod";
 
-type ToolDefinition = {
-  name: string;
-  title?: string;
-  description?: string;
-  inputSchema?: z.ZodRawShape;
-  annotations?: ToolAnnotations;
-  request?: (arguments_: Record<string, unknown>) => Response | Promise<Response>;
-  call?: (toolCall: (name: string, arguments_: Record<string, unknown>) => Promise<CallToolResult>) => CallToolResult | Promise<CallToolResult>;
-};
-type NpmDefinition = { packageSpec: string; args?: string[]; cache?: string; env?: Record<string, string> };
-type ToolOverride = Partial<Pick<Tool, "name" | "title" | "description" | "inputSchema" | "outputSchema" | "annotations" | "_meta">>;
+type Definition<
+  Path extends `/${string}` = `/${string}`,
+  HonoType extends HonoBase<any, any, any, any> = Hono,
+  InputSchema extends z.ZodObject<z.ZodRawShape> = z.ZodObject<z.ZodRawShape>,
+> = readonly [
+  path: Path,
+  hono: HonoType,
+  inputSchema: InputSchema,
+  description?: string,
+  annotations?: ToolAnnotations,
+];
+export default class Register<CurrentSchema extends Schema = {}> {
+  private definitionsValue: Definition<any, any, any>[] = [];
+  private honoValue = new Hono() as HonoBase<BlankEnv, CurrentSchema, "/", "/">;
 
-export default class PublicMcp {
-  private readonly transport = new StreamableHTTPTransport();
-  private readonly npmDefinitions: Array<{
-    definition: NpmDefinition;
-    overrides: Map<string, ToolOverride>;
-    additions: ToolDefinition[];
-  }> = [];
-  private registration?: Promise<void>;
-  private connection?: Promise<void>;
-
-  constructor(private readonly server: McpServer) {}
-
-  readonly handler: Handler = async (ctx) => {
-    this.registration ??= (async () => {
-      for (const npm of this.npmDefinitions) {
-        const { args = [], cache, env, packageSpec } = npm.definition;
-        const client = new Client({ name: `${packageSpec}-proxy`, version: "0.0.0" });
-        await client.connect(new StdioClientTransport({
-          command: "npx",
-          args: ["-y", ...(cache ? ["--cache", cache] : []), packageSpec, ...args],
-          env,
-        }));
-        const toolCall = async (name: string, arguments_: Record<string, unknown>) => CallToolResultSchema.parse(
-          await client.callTool({ name, arguments: arguments_ }),
-        );
-        const tools = (await client.listTools()).tools;
-        const toolNames = new Set(tools.map(tool => tool.name));
-        for (const toolName of npm.overrides.keys()) {
-          if (!toolNames.has(toolName)) throw new Error(`Cannot replace missing tool "${toolName}" from ${packageSpec}.`);
-        }
-        for (const tool of tools) {
-          const externalTool = { ...tool, ...npm.overrides.get(tool.name) };
-          this.server.registerTool(externalTool.name, {
-            title: externalTool.title,
-            description: externalTool.description,
-            inputSchema: z.fromJSONSchema(externalTool.inputSchema as Parameters<typeof z.fromJSONSchema>[0]),
-            outputSchema: externalTool.outputSchema ? z.fromJSONSchema(externalTool.outputSchema as Parameters<typeof z.fromJSONSchema>[0]) : undefined,
-            annotations: externalTool.annotations,
-            _meta: externalTool._meta,
-          }, async arguments_ => toolCall(tool.name, arguments_ as Record<string, unknown>));
-        }
-        for (const addition of npm.additions) {
-          this.server.registerTool(addition.name, {
-            title: addition.title,
-            description: addition.description,
-            inputSchema: addition.inputSchema ? z.object(addition.inputSchema) : undefined,
-            annotations: addition.annotations,
-          }, async () => addition.call!(toolCall));
-        }
-      }
-    })();
-    await this.registration;
-    this.connection ??= this.server.connect(this.transport);
-    await this.connection;
-    return this.transport.handleRequest(ctx);
-  };
-
-  npmMcp(definition: NpmDefinition) {
-    if (this.registration) throw new Error("MCP configuration cannot change after registration starts.");
-    const overrides = new Map<string, ToolOverride>();
-    const additions: ToolDefinition[] = [];
-    const product = {
-      toolReplace: ({ toolName, ...override }: ToolOverride & { toolName: string }) => {
-        if (this.registration) throw new Error("MCP configuration cannot change after registration starts.");
-        overrides.set(toolName, { ...overrides.get(toolName), ...override });
-        return product;
-      },
-      toolAdd: (tool: ToolDefinition) => {
-        if (this.registration) throw new Error("MCP configuration cannot change after registration starts.");
-        additions.push(tool);
-        return product;
-      },
-    };
-    this.npmDefinitions.push({ definition, overrides, additions });
-    return product;
+  register<
+    const Path extends `/${string}`,
+    HonoEnv extends Env,
+    ChildSchema extends Schema,
+    HonoBasePath extends string,
+    HonoCurrentPath extends string,
+    InputSchema extends z.ZodObject<z.ZodRawShape>,
+  >(...definition: Definition<
+    Path,
+    HonoBase<HonoEnv, ChildSchema, HonoBasePath, HonoCurrentPath>,
+    InputSchema
+  >) {
+    const [path, hono] = definition;
+    const [route, ...routes] = hono.routes;
+    if (
+      !route
+      || route.path !== "/"
+      || routes.some(item => (
+        item.method !== route.method
+        || item.path !== route.path
+      ))
+    ) {
+      throw new Error("Each MCP action Hono must contain one method and path.");
+    }
+    const method = route.method.toUpperCase();
+    if (!METHODS.some(honoMethod => honoMethod.toUpperCase() === method)) {
+      throw new Error(`Unsupported MCP Hono method: ${method} ${path}.`);
+    }
+    const routeName = path.split("/").filter(Boolean);
+    if (
+      routeName.length === 0
+      || routeName.some(segment => !/^[A-Za-z0-9_-]+$/.test(segment))
+    ) {
+      throw new Error(`Hono route "${method} ${path}" cannot produce a stable MCP tool name.`);
+    }
+    const nextHono = this.honoValue.route(path, hono);
+    const mcp = new Register<
+      CurrentSchema | MergeSchemaPath<ChildSchema, MergePath<"/", Path>>
+    >();
+    mcp.definitionsValue = [...this.definitionsValue, definition];
+    mcp.honoValue = nextHono;
+    return mcp;
   }
 
-  requestToolRegister<InputArgs extends z.ZodRawShape>(definition: Omit<ToolDefinition, "inputSchema" | "request"> & {
-    inputSchema: z.ZodObject<InputArgs>;
-    request: (arguments_: z.output<z.ZodObject<InputArgs>>) => Response | Promise<Response>;
-  }): void {
-    if (this.registration) throw new Error("MCP configuration cannot change after registration starts.");
-    this.server.registerTool<AnySchema, z.ZodObject<InputArgs>>(
-      definition.name,
-      { title: definition.title, description: definition.description, inputSchema: definition.inputSchema, annotations: definition.annotations },
-      async arguments_ => {
-        const response = await definition.request(arguments_);
-        const text = await response.text();
-        if (!response.ok) throw new Error(text || String(response.status));
-        const body: unknown = text ? JSON.parse(text) : String(response.status);
-        return { content: [{ type: "text" as const, text: typeof body === "string" ? body : JSON.stringify(body) }] };
-      },
-    );
+  mount<ParentSchema extends Schema>(
+    namespace: string,
+    server: McpServer,
+    hono: HonoBase<BlankEnv, ParentSchema, "/", "/">,
+  ) {
+    for (const definition of this.definitionsValue) {
+      const [path, action, inputSchema, description, annotations] = definition;
+      const method = action.routes[0]!.method.toUpperCase();
+      server.registerTool<AnySchema, typeof inputSchema>(
+        `${namespace}.${path.split("/").filter(Boolean).join(".")}.${method}`,
+        { description, inputSchema, annotations },
+        async (arguments_: Record<string, unknown>) => {
+          let requestPath = "/";
+          if (method === "GET" || method === "HEAD") {
+            const search = new URLSearchParams();
+            for (const [name, value] of Object.entries(arguments_)) {
+              if (value === undefined) continue;
+              for (const item of Array.isArray(value) ? value : [value]) {
+                search.append(name, typeof item === "string" ? item : JSON.stringify(item));
+              }
+            }
+            const query = search.toString();
+            if (query) requestPath += `?${query}`;
+          }
+          const response = method === "GET" || method === "HEAD"
+            ? await action.request(requestPath, { method })
+            : await action.request("/", {
+                method,
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(arguments_),
+              });
+          const text = await response.text();
+          if (!response.ok) throw new Error(text || String(response.status));
+          let output = text || String(response.status);
+          if (text && response.headers.get("content-type")?.includes("application/json")) {
+            const body: unknown = JSON.parse(text);
+            output = typeof body === "string" ? body : JSON.stringify(body);
+          }
+          return { content: [{ type: "text" as const, text: output }] };
+        },
+      );
+    }
+    hono.route(`/${namespace}`, this.honoValue);
   }
 }

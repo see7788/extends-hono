@@ -2,7 +2,6 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { isAbsolute, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import {
   build,
   createServer,
@@ -44,10 +43,12 @@ export default (
     honoEntry,
     honoHost,
     honoPort,
+    webDefine,
   }: {
     honoEntry: string;
     honoHost: string;
     honoPort: number;
+    webDefine?: Record<string, unknown>;
   },
   ...reactRoots: string[]
 ): UserConfigExport => async (configEnv) => {
@@ -68,6 +69,10 @@ export default (
   if (new Set(projects.map(project => project.name)).size !== projects.length) {
     throw new Error("React package names must be unique");
   }
+  const webProjectDefine = {
+    ...webDefine,
+    __HONO_ORIGIN__: JSON.stringify(`http://${honoHost}:${honoPort}`),
+  };
 
   const [primaryProject, ...secondaryProjects] = projects;
   const primaryConfig = await loadConfigFromFile(configEnv, primaryProject.configFile, primaryProject.root);
@@ -77,8 +82,17 @@ export default (
     for (const project of secondaryProjects) {
       await build({
         base: "./",
-        build: { emptyOutDir: true, outDir: resolve(cwd, "dist", project.name) },
+        build: {
+          emptyOutDir: true,
+          outDir: resolve(cwd, "dist", project.name),
+          rolldownOptions: {
+            output: {
+              entryFileNames: "index.js",
+            },
+          },
+        },
         configFile: project.configFile,
+        define: webProjectDefine,
         mode: configEnv.mode,
         root: project.root,
       });
@@ -98,7 +112,16 @@ export default (
     });
     return mergeConfig(primaryConfig.config, {
       base: "./",
-      build: { emptyOutDir: true, outDir: resolve(cwd, "dist", primaryProject.name) },
+      build: {
+        emptyOutDir: true,
+        outDir: resolve(cwd, "dist", primaryProject.name),
+        rolldownOptions: {
+          output: {
+            entryFileNames: "index.js",
+          },
+        },
+      },
+      define: webProjectDefine,
       root: primaryProject.root,
     });
   }
@@ -111,11 +134,27 @@ export default (
     closing = true;
     const processClose = honoProcess
       ? new Promise<void>((resolveClose) => {
-          const process = honoProcess!;
-          process.once("error", () => resolveClose());
-          process.once("exit", () => resolveClose());
-          if (!process.kill()) resolveClose();
-        })
+        const watcher = honoProcess!;
+        const watcherClose = () => {
+          watcher.once("error", () => resolveClose());
+          watcher.once("exit", () => resolveClose());
+          if (!watcher.kill()) resolveClose();
+        };
+        if (process.platform === "win32" && watcher.pid !== undefined) {
+          let taskkillHandled = false;
+          const taskkillComplete = (code: number | null) => {
+            if (taskkillHandled) return;
+            taskkillHandled = true;
+            if (code === 0) resolveClose();
+            else watcherClose();
+          };
+          const taskkill = spawn("taskkill.exe", ["/PID", String(watcher.pid), "/T", "/F"], { windowsHide: true });
+          taskkill.once("error", () => taskkillComplete(null));
+          taskkill.once("exit", code => taskkillComplete(code));
+          return;
+        }
+        watcherClose();
+      })
       : Promise.resolve();
     await Promise.allSettled([
       processClose,
@@ -139,6 +178,7 @@ export default (
             const server = await createServer({
               base: `/${project.name}/`,
               configFile: project.configFile,
+              define: webProjectDefine,
               mode: configEnv.mode,
               root: project.root,
               server: {
@@ -155,7 +195,7 @@ export default (
           const servers = [primaryServer, ...secondaryServers];
           honoProcess = spawn(
             process.execPath,
-            ["--import", pathToFileURL(createRequire(entry).resolve("tsx")).href, entry],
+            [createRequire(entry).resolve("tsx/cli"), "watch", entry],
             {
               cwd,
               env: {
@@ -188,6 +228,7 @@ export default (
 
   return mergeConfig(primaryConfig.config, {
     base: `/${primaryProject.name}/`,
+    define: webProjectDefine,
     plugins: [lifecycle],
     root: primaryProject.root,
     server: {
