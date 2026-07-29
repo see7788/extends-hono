@@ -89,7 +89,7 @@ export default new Register().register(
       "  const senderResponse = await fetch('http://127.0.0.1:3005/ai-call-ai/WORKSPACE_AI_CONTACT?' + new URLSearchParams({ workspacePath: senderWorkspacePath, remoteDebuggingPort: String(senderRemoteDebuggingPort) }));",
       "  const senderContact = await senderResponse.text();",
       "  if (!senderResponse.ok) throw new Error(senderContact);",
-      "  const response = await fetch('http://127.0.0.1:3005/ai-call-ai/call-workspace-ai', {",
+      "  const response = await fetch('http://127.0.0.1:3005/ai-call-ai/WORKSPACE_AI_CONTACT', {",
       "    method: 'POST',",
       "    headers: { 'content-type': 'application/json' },",
       `    body: JSON.stringify({ workspacePath: ${JSON.stringify(input.workspacePath)}, remoteDebuggingPort: ${input.remoteDebuggingPort}, senderWorkspacePath, senderContact, message: msg }),`,
@@ -117,7 +117,7 @@ export default new Register().register(
     openWorldHint: false,
   },
 ).register(
-  "/call-workspace-ai",
+  "/WORKSPACE_AI_CONTACT",
   new Hono().post("/", zValidator("json", callSchema), async context => {
     const input = context.req.valid("json");
     if (!input.senderContact.includes(`我是 ${input.senderWorkspacePath} 路径的 AI，`)) {
