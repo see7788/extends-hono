@@ -33,8 +33,13 @@ export default new Register().register(
     const input = context.req.valid("query");
     return context.text([
       "<<<WORKSPACE_AI_CONTACT>>>",
-      `我是 ${input.workspacePath} 路径的 AI，你与我说话：先调用 ai-call-ai.WORKSPACE_AI_CONTACT.GET，以你自己的完整工作区路径和 remoteDebuggingPort 取得 senderContact，再执行：`,
-      "async (senderWorkspacePath, senderContact, msg) => {",
+      `我是 ${input.workspacePath} 路径的 AI。`,
+      `运行前提：仅限本机；http://127.0.0.1:3005 服务运行中；我的 VS Code 使用 remoteDebuggingPort ${input.remoteDebuggingPort} 启动并已打开 Codex 面板。需要启动我时执行：$code="$env:LOCALAPPDATA\\Programs\\Microsoft VS Code\\Code.exe"; Start-Process -FilePath $code -ArgumentList @("--remote-debugging-port=${input.remoteDebuggingPort}","--new-window",'${input.workspacePath.replaceAll("'", "''")}')`,
+      "你与我说话，执行下面的函数；senderWorkspacePath 必须是你自己的完整工作区路径，senderRemoteDebuggingPort 必须是你自己的 VS Code 实际远程调试端口：",
+      "async (senderWorkspacePath, senderRemoteDebuggingPort, msg) => {",
+      "  const senderResponse = await fetch('http://127.0.0.1:3005/ai-call-ai/WORKSPACE_AI_CONTACT?' + new URLSearchParams({ workspacePath: senderWorkspacePath, remoteDebuggingPort: String(senderRemoteDebuggingPort) }));",
+      "  const senderContact = await senderResponse.text();",
+      "  if (!senderResponse.ok) throw new Error(senderContact);",
       "  const response = await fetch('http://127.0.0.1:3005/ai-call-ai/call-workspace-ai', {",
       "    method: 'POST',",
       "    headers: { 'content-type': 'application/json' },",
@@ -44,14 +49,16 @@ export default new Register().register(
       "  if (!response.ok) throw new Error(text);",
       "  return text;",
       "};",
+      "函数会自动生成并随消息发送你的完整回信卡；接口会检查我的调试端口、唯一工作区窗口、唯一 Codex WebView、唯一可见且为空的输入框以及发送结果，任一条件不成立就报错且不覆盖草稿。你自己的窗口也必须满足同样运行前提，我才能按回信卡直接回复你。",
       "<<<END_WORKSPACE_AI_CONTACT>>>",
     ].join("\n"));
   }),
   contactSchema,
   [
     "当用户询问“你的通话联系方式”“你的通信方式”“你的对话接口”或任何近似意思，想把当前 Codex 的联系信息复制给另一个 AI 时使用。",
+    "识别到该意图后必须立即调用本工具并把返回文本原样回复，禁止自行改写、解释、另造一套联系方式或要求用户理解背后步骤。",
     "当前 AI 直接使用自己已知的 workspacePath 和启动该 VS Code 窗口时使用的 remoteDebuggingPort，不向用户重复询问已经知道的值。",
-    "成功返回带 WORKSPACE_AI_CONTACT 标记、可原样复制的标准联系卡；卡片要求联系方调用它自己的 ai-call-ai.WORKSPACE_AI_CONTACT.GET 并随消息附上自己的联系卡，使双方可以直接互相回复。",
+    "成功返回带 WORKSPACE_AI_CONTACT 标记、可原样复制的完整联系卡；卡片包含本机环境前提、准确启动命令、可执行联系函数、自动生成发送方回信卡的步骤和全部发送保护，使双方可以直接互相回复。",
   ].join(" "),
   {
     readOnlyHint: true,
@@ -245,7 +252,7 @@ export default new Register().register(
   callSchema,
   [
     "当用户要求当前 AI 与另一个工作区 AI 说话、对话、联系、询问或发送消息时使用。",
-    "优先从对方的 WORKSPACE_AI_CONTACT 直接取得 workspacePath 和 remoteDebuggingPort；先调用当前 AI 自己的 ai-call-ai.WORKSPACE_AI_CONTACT.GET，以自己已知的完整工作区路径和 remoteDebuggingPort 取得 senderContact，再把自己的完整工作区路径作为 senderWorkspacePath，连同 senderContact 和 message 直接发送，使对方可以直接回复。",
+    "优先直接执行对方 WORKSPACE_AI_CONTACT 中的函数；函数会使用当前 AI 自己已知的完整工作区路径和 remoteDebuggingPort，自动调用 ai-call-ai.WORKSPACE_AI_CONTACT.GET 取得 senderContact，再把 senderWorkspacePath、senderContact 和 message 直接发送，使对方可以直接回复。",
     "只有缺少对方联系方式、目标存在歧义或无法确定要发送的内容时才向用户询问；不得猜测或使用当前 AI 的参数代替对方参数。",
     "调用会真实发送消息且不可自动重试；目标不唯一、已有草稿或发送未验证时会明确失败。",
   ].join(" "),
