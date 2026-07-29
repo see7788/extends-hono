@@ -11,6 +11,16 @@ const contactSchema = z.object({
   remoteDebuggingPort: z.coerce.number().int().min(1).max(65535),
 });
 const callSchema = contactSchema.extend({
+  senderWorkspacePath: z.string().trim().min(1).refine(isAbsolute, {
+    message: "senderWorkspacePath must be an absolute path",
+  }),
+  senderContact: z.string().min(1).max(100_000).refine(
+    value => (
+      value.includes("<<<WORKSPACE_AI_CONTACT>>>")
+      && value.includes("<<<END_WORKSPACE_AI_CONTACT>>>")
+    ),
+    "senderContact must be the complete result of ai-call-ai.WORKSPACE_AI_CONTACT.GET",
+  ),
   message: z.string().min(1).max(100_000).refine(
     value => value.trim().length > 0,
     "message must contain non-whitespace text",
@@ -18,31 +28,30 @@ const callSchema = contactSchema.extend({
 });
 
 export default new Register().register(
-  "/callme-props",
+  "/WORKSPACE_AI_CONTACT",
   new Hono().get("/", zValidator("query", contactSchema), context => {
     const input = context.req.valid("query");
     return context.text([
-      `我是 ${input.workspacePath} 路径的 AI。你与我说话的方法是：调用 ai-call-ai.call-workspace-ai.POST，并将下面的 arguments 作为参数传入；只把 message 改成你要对我说的话。`,
-      "",
       "<<<WORKSPACE_AI_CONTACT>>>",
-      JSON.stringify({
-        tool: "ai-call-ai.call-workspace-ai.POST",
-        arguments: {
-          workspacePath: input.workspacePath,
-          remoteDebuggingPort: input.remoteDebuggingPort,
-          message: "<你要对我说的话>",
-        },
-      }, null, 2),
+      `我是 ${input.workspacePath} 路径的 AI，你与我说话：先调用 ai-call-ai.WORKSPACE_AI_CONTACT.GET，以你自己的完整工作区路径和 remoteDebuggingPort 取得 senderContact，再执行：`,
+      "async (senderWorkspacePath, senderContact, msg) => {",
+      "  const response = await fetch('http://127.0.0.1:3005/ai-call-ai/call-workspace-ai', {",
+      "    method: 'POST',",
+      "    headers: { 'content-type': 'application/json' },",
+      `    body: JSON.stringify({ workspacePath: ${JSON.stringify(input.workspacePath)}, remoteDebuggingPort: ${input.remoteDebuggingPort}, senderWorkspacePath, senderContact, message: msg }),`,
+      "  });",
+      "  const text = await response.text();",
+      "  if (!response.ok) throw new Error(text);",
+      "  return text;",
+      "};",
       "<<<END_WORKSPACE_AI_CONTACT>>>",
-      "",
-      "调用成功后，message 会发送到我的 Codex 对话；不要修改 workspacePath 或 remoteDebuggingPort。",
     ].join("\n"));
   }),
   contactSchema,
   [
     "当用户询问“你的通话联系方式”“你的通信方式”“你的对话接口”或任何近似意思，想把当前 Codex 的联系信息复制给另一个 AI 时使用。",
     "当前 AI 直接使用自己已知的 workspacePath 和启动该 VS Code 窗口时使用的 remoteDebuggingPort，不向用户重复询问已经知道的值。",
-    "成功返回带 WORKSPACE_AI_CONTACT 标记、可原样复制的标准联系卡；此工具只提供联系方式，不发送消息。",
+    "成功返回带 WORKSPACE_AI_CONTACT 标记、可原样复制的标准联系卡；卡片要求联系方调用它自己的 ai-call-ai.WORKSPACE_AI_CONTACT.GET 并随消息附上自己的联系卡，使双方可以直接互相回复。",
   ].join(" "),
   {
     readOnlyHint: true,
@@ -54,6 +63,12 @@ export default new Register().register(
   "/call-workspace-ai",
   new Hono().post("/", zValidator("json", callSchema), async context => {
     const input = context.req.valid("json");
+    if (!input.senderContact.includes(`我是 ${input.senderWorkspacePath} 路径的 AI，`)) {
+      return context.text(
+        "senderContact identity does not match senderWorkspacePath.",
+        400,
+      );
+    }
     const debuggerUrl = `http://127.0.0.1:${input.remoteDebuggingPort}`;
     let response: Response;
     try {
@@ -166,7 +181,15 @@ export default new Register().register(
       if (!focused.result?.value?.focused) throw new Error("Codex input could not be focused.");
       if (focused.result.value.text?.trim()) throw new Error("Codex already has an unsent draft.");
 
-      await cdp("Input.insertText", { text: input.message });
+      await cdp("Input.insertText", {
+        text: [
+          `【来自 ${input.senderWorkspacePath} 路径的 AI】`,
+          input.message,
+          "",
+          "你回复我时，执行以下联系卡：",
+          input.senderContact,
+        ].join("\n"),
+      });
       await cdp("Input.dispatchKeyEvent", {
         type: "keyDown",
         key: "Enter",
@@ -181,14 +204,31 @@ export default new Register().register(
         windowsVirtualKeyCode: 13,
         nativeVirtualKeyCode: 13,
       });
-      await new Promise(resolve => setTimeout(resolve, 300));
       const verification = await cdp("Runtime.evaluate", {
-        expression: `document.getElementById("active-frame")?.contentDocument
-          ?.querySelector('[role="textbox"][contenteditable="true"]')?.innerText || ""`,
+        expression: `new Promise(resolve => {
+          const doc = document.getElementById("active-frame")?.contentDocument;
+          if (!doc) return resolve(false);
+          const cleared = () => !(
+            doc.querySelector('[role="textbox"][contenteditable="true"]')?.innerText || ""
+          );
+          if (cleared()) return resolve(true);
+          const observer = new MutationObserver(() => {
+            if (!cleared()) return;
+            clearTimeout(timeout);
+            observer.disconnect();
+            resolve(true);
+          });
+          const timeout = setTimeout(() => {
+            observer.disconnect();
+            resolve(false);
+          }, 4_000);
+          observer.observe(doc.body, { childList: true, subtree: true, characterData: true });
+        })`,
+        awaitPromise: true,
         returnByValue: true,
-      }) as { result?: { value?: string } };
-      if (verification.result?.value !== "") {
-        throw new Error("Codex input did not clear after Enter.");
+      }) as { result?: { value?: boolean } };
+      if (!verification.result?.value) {
+        throw new Error("Codex input did not clear within 4 seconds after Enter.");
       }
     } catch (error) {
       return context.text(
@@ -205,7 +245,8 @@ export default new Register().register(
   callSchema,
   [
     "当用户要求当前 AI 与另一个工作区 AI 说话、对话、联系、询问或发送消息时使用。",
-    "从用户提供的 WORKSPACE_AI_CONTACT 取得对方 workspacePath 和 remoteDebuggingPort，并向用户确认 message；缺少任何值时主动询问，不得猜测或使用当前 AI 的参数代替对方参数。",
+    "优先从对方的 WORKSPACE_AI_CONTACT 直接取得 workspacePath 和 remoteDebuggingPort；先调用当前 AI 自己的 ai-call-ai.WORKSPACE_AI_CONTACT.GET，以自己已知的完整工作区路径和 remoteDebuggingPort 取得 senderContact，再把自己的完整工作区路径作为 senderWorkspacePath，连同 senderContact 和 message 直接发送，使对方可以直接回复。",
+    "只有缺少对方联系方式、目标存在歧义或无法确定要发送的内容时才向用户询问；不得猜测或使用当前 AI 的参数代替对方参数。",
     "调用会真实发送消息且不可自动重试；目标不唯一、已有草稿或发送未验证时会明确失败。",
   ].join(" "),
   {
