@@ -110,13 +110,14 @@ export default class Register<CurrentSchema extends Schema = {}> {
             const query = search.toString();
             if (query) requestPath += `?${query}`;
           }
+          const env = { mcpServer: server };
           const response = method === "GET" || method === "HEAD"
-            ? await action.request(requestPath, { method })
+            ? await action.request(requestPath, { method }, env)
             : await action.request("/", {
                 method,
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify(arguments_),
-              });
+              }, env);
           const text = await response.text();
           if (!response.ok) throw new Error(text || String(response.status));
           let output = text || String(response.status);

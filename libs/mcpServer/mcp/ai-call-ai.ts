@@ -1,5 +1,11 @@
-import { basename, isAbsolute } from "node:path";
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { access } from "node:fs/promises";
+import { createServer } from "node:net";
+import { basename, isAbsolute, join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { zValidator } from "@hono/zod-validator";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Hono } from "hono";
 import { z } from "zod";
 import Register from "../public";
@@ -8,7 +14,6 @@ const contactSchema = z.object({
   workspacePath: z.string().trim().min(1).refine(isAbsolute, {
     message: "workspacePath must be an absolute path",
   }),
-  remoteDebuggingPort: z.coerce.number().int().min(1).max(65535).optional(),
 });
 const callSchema = contactSchema.extend({
   remoteDebuggingPort: z.coerce.number().int().min(1).max(65535),
@@ -27,88 +32,198 @@ const callSchema = contactSchema.extend({
     "message must contain non-whitespace text",
   ),
 });
+type DebugTarget = {
+  id: string;
+  parentId?: string;
+  title: string;
+  type: string;
+  url: string;
+  webSocketDebuggerUrl?: string;
+};
+type ContactTarget = {
+  page: DebugTarget;
+  webview: DebugTarget & { webSocketDebuggerUrl: string };
+};
+type Contact = ContactTarget & { port: number };
+type McpEnv = {
+  Bindings: {
+    mcpServer?: McpServer;
+  };
+};
+
+function contactPorts(workspacePath: string) {
+  const seed = createHash("sha256")
+    .update(resolve(workspacePath).toLocaleLowerCase())
+    .digest()
+    .readUInt16BE();
+  return Array.from(
+    { length: 64 },
+    (_, index) => 40_000 + ((seed + index) % 9_000),
+  );
+}
+
+function portAvailable(port: number) {
+  return new Promise<boolean>((fulfilled, rejected) => {
+    const server = createServer();
+    server.unref();
+    server.once("error", error => {
+      const code = "code" in error ? String(error.code) : undefined;
+      if (code === "EADDRINUSE" || code === "EACCES") {
+        fulfilled(false);
+        return;
+      }
+      rejected(error);
+    });
+    server.listen(port, "127.0.0.1", () => {
+      server.close(error => error ? rejected(error) : fulfilled(true));
+    });
+  });
+}
+
+async function contactTargetRead(
+  workspacePath: string,
+  port: number,
+): Promise<ContactTarget> {
+  const response = await fetch(`http://127.0.0.1:${port}/json`, {
+    signal: AbortSignal.timeout(1_000),
+  });
+  if (!response.ok) {
+    throw new Error(`VS Code debugging endpoint ${port} returned ${response.status}.`);
+  }
+  const targets = await response.json() as DebugTarget[];
+  const workspaceName = basename(workspacePath);
+  const pages = targets.filter(target => (
+    target.type === "page"
+    && target.title.toLocaleLowerCase().includes(workspaceName.toLocaleLowerCase())
+  ));
+  const codexWebviews = pages.length === 1
+    ? targets.filter(target => (
+        target.type === "iframe"
+        && target.parentId === pages[0]!.id
+        && new URL(target.url).searchParams.get("extensionId") === "openai.chatgpt"
+      ))
+    : [];
+  const page = pages[0];
+  const webview = codexWebviews[0];
+  if (
+    pages.length !== 1
+    || codexWebviews.length !== 1
+    || !page
+    || !webview?.webSocketDebuggerUrl
+  ) {
+    throw new Error(
+      `端口 ${port} 未找到唯一的 ${workspacePath} VS Code 窗口及其 Codex 面板。`,
+    );
+  }
+  return {
+    page,
+    webview: {
+      ...webview,
+      webSocketDebuggerUrl: webview.webSocketDebuggerUrl,
+    },
+  };
+}
+
+async function contactFind(workspacePath: string): Promise<Contact | undefined> {
+  for (const port of contactPorts(workspacePath)) {
+    if (await portAvailable(port)) continue;
+    const target = await contactTargetRead(workspacePath, port)
+      .catch(() => undefined);
+    if (target) return { port, ...target };
+  }
+  return undefined;
+}
+
+async function contactPortAllocate(workspacePath: string) {
+  for (const port of contactPorts(workspacePath)) {
+    if (await portAvailable(port)) return port;
+  }
+  throw new Error("未能为 VS Code 联系窗口分配空闲端口。");
+}
+
+async function contactStart(workspacePath: string): Promise<Contact> {
+  if (process.platform !== "win32") {
+    throw new Error("自动启动联系窗口目前只支持 Windows。");
+  }
+  const localAppData = process.env.LOCALAPPDATA?.trim();
+  if (!localAppData) throw new Error("LOCALAPPDATA is unavailable.");
+  const codePath = join(localAppData, "Programs", "Microsoft VS Code", "Code.exe");
+  await access(codePath);
+  const port = await contactPortAllocate(workspacePath);
+  await new Promise<void>((fulfilled, rejected) => {
+    const child = spawn(codePath, [
+      `--remote-debugging-port=${port}`,
+      "--new-window",
+      workspacePath,
+    ], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.once("error", rejected);
+    child.once("spawn", () => {
+      child.unref();
+      fulfilled();
+    });
+  });
+  const deadline = Date.now() + 45_000;
+  let lastError: unknown;
+  while (Date.now() < deadline) {
+    try {
+      return { port, ...await contactTargetRead(workspacePath, port) };
+    } catch (error) {
+      lastError = error;
+      await delay(500);
+    }
+  }
+  throw new Error(
+    `联系窗口启动后未在 45 秒内就绪：${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
+}
+
+function contactCard(workspacePath: string, port: number) {
+  return [
+    "<<<WORKSPACE_AI_CONTACT>>>",
+    `我是 ${workspacePath} 路径的 AI。`,
+    `运行前提：仅限本机；http://127.0.0.1:3005 服务运行中；我的 VS Code 联系窗口使用 remoteDebuggingPort ${port} 并已打开 Codex 面板。`,
+    "你与我说话，执行下面的函数；senderWorkspacePath 必须是你自己的完整工作区路径：",
+    "async (senderWorkspacePath, msg) => {",
+    "  const senderResponse = await fetch('http://127.0.0.1:3005/ai-call-ai/WORKSPACE_AI_CONTACT?' + new URLSearchParams({ workspacePath: senderWorkspacePath }));",
+    "  const senderContact = await senderResponse.text();",
+    "  if (!senderResponse.ok) throw new Error(senderContact);",
+    "  const response = await fetch('http://127.0.0.1:3005/ai-call-ai/WORKSPACE_AI_CONTACT', {",
+    "    method: 'POST',",
+    "    headers: { 'content-type': 'application/json' },",
+    `    body: JSON.stringify({ workspacePath: ${JSON.stringify(workspacePath)}, remoteDebuggingPort: ${port}, senderWorkspacePath, senderContact, message: msg }),`,
+    "  });",
+    "  const text = await response.text();",
+    "  if (!response.ok) throw new Error(text);",
+    "  return text;",
+    "};",
+    "函数会自动取得发送方已经启用的完整回信卡并随消息发送；接口会检查我的调试端口、唯一工作区窗口、唯一 Codex WebView、唯一可见且为空的输入框以及发送结果，任一条件不成立就报错且不覆盖草稿。",
+    "<<<END_WORKSPACE_AI_CONTACT>>>",
+  ].join("\n");
+}
 
 export default new Register().register(
   "/WORKSPACE_AI_CONTACT",
   new Hono().get("/", zValidator("query", contactSchema), async context => {
     const input = context.req.valid("query");
-    const startCommand = `$code="$env:LOCALAPPDATA\\Programs\\Microsoft VS Code\\Code.exe"; Start-Process -FilePath $code -ArgumentList @("--remote-debugging-port=${input.remoteDebuggingPort ?? "<未占用端口>"}","--new-window",'${input.workspacePath.replaceAll("'", "''")}')`;
-    if (!input.remoteDebuggingPort) {
-      return context.text(
-        `当前 AI 没有可验证的 remoteDebuggingPort，不能提供 WORKSPACE_AI_CONTACT。请关闭当前工作区窗口后执行：${startCommand}`,
-        409,
-      );
-    }
-    const debuggerUrl = `http://127.0.0.1:${input.remoteDebuggingPort}`;
-    let response: Response;
-    try {
-      response = await fetch(`${debuggerUrl}/json`);
-    } catch {
-      return context.text(
-        `当前 AI 的 VS Code 远程调试端口 ${input.remoteDebuggingPort} 不可访问，不能提供 WORKSPACE_AI_CONTACT。请关闭当前工作区窗口后执行：${startCommand}`,
-        409,
-      );
-    }
-    if (!response.ok) {
-      return context.text(
-        `当前 AI 的 VS Code 远程调试端口 ${input.remoteDebuggingPort} 返回 ${response.status}，不能提供 WORKSPACE_AI_CONTACT。请关闭当前工作区窗口后执行：${startCommand}`,
-        409,
-      );
-    }
-    const targets = await response.json() as Array<{
-      id: string;
-      parentId?: string;
-      title: string;
-      type: string;
-      url: string;
-    }>;
-    const workspaceName = basename(input.workspacePath);
-    const pages = targets.filter(target => (
-      target.type === "page"
-      && target.title.toLocaleLowerCase().includes(workspaceName.toLocaleLowerCase())
-    ));
-    const codexWebviews = pages.length === 1
-      ? targets.filter(target => (
-          target.type === "iframe"
-          && target.parentId === pages[0]!.id
-          && new URL(target.url).searchParams.get("extensionId") === "openai.chatgpt"
-        ))
-      : [];
-    if (pages.length !== 1 || codexWebviews.length !== 1) {
-      return context.text(
-        `当前端口 ${input.remoteDebuggingPort} 未找到唯一的 ${input.workspacePath} VS Code 窗口及其 Codex 面板，不能提供 WORKSPACE_AI_CONTACT。请确认 Codex 面板已打开；需要重新启动时执行：${startCommand}`,
-        409,
-      );
-    }
-    return context.text([
-      "<<<WORKSPACE_AI_CONTACT>>>",
-      `我是 ${input.workspacePath} 路径的 AI。`,
-      `运行前提：仅限本机；http://127.0.0.1:3005 服务运行中；我的 VS Code 使用 remoteDebuggingPort ${input.remoteDebuggingPort} 启动并已打开 Codex 面板。需要启动我时执行：${startCommand}`,
-      "你与我说话，执行下面的函数；senderWorkspacePath 必须是你自己的完整工作区路径，senderRemoteDebuggingPort 必须是你自己的 VS Code 实际远程调试端口：",
-      "async (senderWorkspacePath, senderRemoteDebuggingPort, msg) => {",
-      "  const senderResponse = await fetch('http://127.0.0.1:3005/ai-call-ai/WORKSPACE_AI_CONTACT?' + new URLSearchParams({ workspacePath: senderWorkspacePath, remoteDebuggingPort: String(senderRemoteDebuggingPort) }));",
-      "  const senderContact = await senderResponse.text();",
-      "  if (!senderResponse.ok) throw new Error(senderContact);",
-      "  const response = await fetch('http://127.0.0.1:3005/ai-call-ai/WORKSPACE_AI_CONTACT', {",
-      "    method: 'POST',",
-      "    headers: { 'content-type': 'application/json' },",
-      `    body: JSON.stringify({ workspacePath: ${JSON.stringify(input.workspacePath)}, remoteDebuggingPort: ${input.remoteDebuggingPort}, senderWorkspacePath, senderContact, message: msg }),`,
-      "  });",
-      "  const text = await response.text();",
-      "  if (!response.ok) throw new Error(text);",
-      "  return text;",
-      "};",
-      "函数会自动生成并随消息发送你的完整回信卡；接口会检查我的调试端口、唯一工作区窗口、唯一 Codex WebView、唯一可见且为空的输入框以及发送结果，任一条件不成立就报错且不覆盖草稿。你自己的窗口也必须满足同样运行前提，我才能按回信卡直接回复你。",
-      "<<<END_WORKSPACE_AI_CONTACT>>>",
-    ].join("\n"));
+    const contact = await contactFind(input.workspacePath);
+    return contact
+      ? context.text(contactCard(input.workspacePath, contact.port))
+      : context.text(
+          "当前工作区尚未启用 AI 联系窗口；请调用 ai-call-ai.WORKSPACE_AI_CONTACT_ENSURE.POST。",
+          409,
+        );
   }),
   contactSchema,
   [
-    "当用户索要“你的名片”“给我你的名片”“联系卡”，或询问“你的通话联系方式”“你的通信方式”“你的对话接口”等任何近似意思，想把当前 Codex 的联系信息复制给另一个 AI 时使用。",
-    "识别到该意图后必须立即调用本工具并把返回文本原样回复，禁止自行改写、解释、另造一套联系方式或要求用户理解背后步骤。",
-    "当前 AI 直接使用自己已知的 workspacePath 和启动该 VS Code 窗口时使用的 remoteDebuggingPort，不向用户重复询问已经知道的值；没有 remoteDebuggingPort 时仍立即调用本工具，由工具返回准确的不可联系原因和启动命令。",
-    "工具只有在真实验证远程调试端口、唯一工作区窗口和唯一 Codex WebView 后才返回联系卡，禁止为普通启动或错误端口生成假名片。",
-    "成功返回带 WORKSPACE_AI_CONTACT 标记、可原样复制的完整联系卡；卡片包含本机环境前提、准确启动命令、可执行联系函数、自动生成发送方回信卡的步骤和全部发送保护，使双方可以直接互相回复。",
+    "仅在联系卡函数需要读取当前工作区已经启用的回信卡时使用。",
+    "用户直接索要名片或联系卡时改用 ai-call-ai.WORKSPACE_AI_CONTACT_ENSURE.POST，由该工具在需要时显示一次确认按钮并自动启用。",
+    "本工具不启动窗口、不要求 remoteDebuggingPort；成功时返回带 WORKSPACE_AI_CONTACT 标记的完整联系卡，尚未启用时明确失败。",
   ].join(" "),
   {
     readOnlyHint: true,
@@ -117,61 +232,83 @@ export default new Register().register(
     openWorldHint: false,
   },
 ).register(
+  "/WORKSPACE_AI_CONTACT_ENSURE",
+  new Hono<McpEnv>().post(
+    "/",
+    zValidator("json", contactSchema),
+    async context => {
+      const input = context.req.valid("json");
+      const current = await contactFind(input.workspacePath);
+      if (current) {
+        return context.text(contactCard(input.workspacePath, current.port));
+      }
+      const mcpServer = context.env.mcpServer;
+      if (!mcpServer) {
+        return context.text(
+          "WORKSPACE_AI_CONTACT_ENSURE must be called as an MCP tool.",
+          409,
+        );
+      }
+      if (!mcpServer.server.getClientCapabilities()?.elicitation) {
+        return context.text(
+          "当前 MCP 客户端不支持原生确认按钮，不能自动启用 AI 联系窗口。",
+          409,
+        );
+      }
+      const confirmation = await mcpServer.server.elicitInput({
+        mode: "form",
+        message: `为 ${input.workspacePath} 启动新的可联系 VS Code 窗口；当前窗口保持打开。`,
+        requestedSchema: {
+          type: "object",
+          properties: {},
+        },
+      });
+      if (confirmation.action !== "accept") {
+        return context.text("已取消启用 AI 联系窗口。");
+      }
+      const contact = await contactFind(input.workspacePath)
+        ?? await contactStart(input.workspacePath);
+      return context.text(contactCard(input.workspacePath, contact.port));
+    },
+  ),
+  contactSchema,
+  [
+    "当用户索要“你的名片”“给我你的名片”“联系卡”，或询问任何近似的 AI 联系方式时必须立即调用。",
+    "调用方只提供自己已知的完整 workspacePath，禁止要求用户提供 remoteDebuggingPort、编辑或执行命令、关闭当前 VS Code。",
+    "已有可联系窗口时直接返回完整联系卡；没有时通过 MCP 原生确认按钮请求一次授权，用户接受后在方法内分配空闲端口、保留当前窗口、启动新的 VS Code 窗口并等待真实验证。",
+    "成功返回的 WORKSPACE_AI_CONTACT 必须原样回复；用户拒绝或客户端不支持按钮时原样回复工具结果，不得伪造名片。",
+  ].join(" "),
+  {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+).register(
   "/WORKSPACE_AI_CONTACT",
   new Hono().post("/", zValidator("json", callSchema), async context => {
     const input = context.req.valid("json");
-    if (!input.senderContact.includes(`我是 ${input.senderWorkspacePath} 路径的 AI，`)) {
+    if (!input.senderContact.includes(`我是 ${input.senderWorkspacePath} 路径的 AI。`)) {
       return context.text(
         "senderContact identity does not match senderWorkspacePath.",
         400,
       );
     }
-    const debuggerUrl = `http://127.0.0.1:${input.remoteDebuggingPort}`;
-    let response: Response;
+    let contact: ContactTarget;
     try {
-      response = await fetch(`${debuggerUrl}/json`);
+      contact = await contactTargetRead(
+        input.workspacePath,
+        input.remoteDebuggingPort,
+      );
     } catch (error) {
       return context.text(
-        `Cannot reach ${debuggerUrl}: ${error instanceof Error ? error.message : String(error)}`,
+        `Cannot reach "${input.workspacePath}": ${
+          error instanceof Error ? error.message : String(error)
+        }`,
         502,
       );
     }
-    if (!response.ok) {
-      return context.text(`VS Code debugging endpoint returned ${response.status}.`, 502);
-    }
-    const targets = await response.json() as Array<{
-      id: string;
-      parentId?: string;
-      title: string;
-      type: string;
-      url: string;
-      webSocketDebuggerUrl: string;
-    }>;
-    const workspaceName = basename(input.workspacePath);
-    const pages = targets.filter(target => (
-      target.type === "page"
-      && target.title.toLocaleLowerCase().includes(workspaceName.toLocaleLowerCase())
-    ));
-    if (pages.length !== 1) {
-      return context.text(
-        `Expected one VS Code page for "${workspaceName}", found ${pages.length}.`,
-        409,
-      );
-    }
-    const page = pages[0]!;
-    const codexWebviews = targets.filter(target => (
-      target.type === "iframe"
-      && target.parentId === page.id
-      && new URL(target.url).searchParams.get("extensionId") === "openai.chatgpt"
-    ));
-    if (codexWebviews.length !== 1) {
-      return context.text(
-        `Expected one Codex webview below "${page.title}", found ${codexWebviews.length}.`,
-        409,
-      );
-    }
-
-    const socket = new WebSocket(codexWebviews[0]!.webSocketDebuggerUrl);
+    const socket = new WebSocket(contact.webview.webSocketDebuggerUrl);
     try {
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error("CDP connection timed out.")), 5_000);
@@ -297,12 +434,14 @@ export default new Register().register(
     } finally {
       socket.close();
     }
-    return context.text(`Message sent to "${input.workspacePath}" through "${page.title}".`);
+    return context.text(
+      `Message sent to "${input.workspacePath}" through "${contact.page.title}".`,
+    );
   }),
   callSchema,
   [
     "当用户要求当前 AI 与另一个工作区 AI 说话、对话、联系、询问或发送消息时使用。",
-    "优先直接执行对方 WORKSPACE_AI_CONTACT 中的函数；函数会使用当前 AI 自己已知的完整工作区路径和 remoteDebuggingPort，自动调用 ai-call-ai.WORKSPACE_AI_CONTACT.GET 取得 senderContact，再把 senderWorkspacePath、senderContact 和 message 直接发送，使对方可以直接回复。",
+    "优先直接执行对方 WORKSPACE_AI_CONTACT 中的函数；函数只使用当前 AI 自己已知的完整工作区路径，自动调用 ai-call-ai.WORKSPACE_AI_CONTACT.GET 取得已经启用的 senderContact，再把 senderWorkspacePath、senderContact 和 message 直接发送，使对方可以直接回复。",
     "只有缺少对方联系方式、目标存在歧义或无法确定要发送的内容时才向用户询问；不得猜测或使用当前 AI 的参数代替对方参数。",
     "调用会真实发送消息且不可自动重试；目标不唯一、已有草稿或发送未验证时会明确失败。",
   ].join(" "),
