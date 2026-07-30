@@ -20,13 +20,6 @@ const callSchema = contactSchema.extend({
   senderWorkspacePath: z.string().trim().min(1).refine(isAbsolute, {
     message: "senderWorkspacePath must be an absolute path",
   }),
-  senderContact: z.string().min(1).max(100_000).refine(
-    value => (
-      value.includes("<<<WORKSPACE_AI_CONTACT>>>")
-      && value.includes("<<<END_WORKSPACE_AI_CONTACT>>>")
-    ),
-    "senderContact must be the complete result of ai-call-ai.WORKSPACE_AI_CONTACT.GET",
-  ),
   message: z.string().min(1).max(100_000).refine(
     value => value.trim().length > 0,
     "message must contain non-whitespace text",
@@ -302,19 +295,16 @@ function contactCard(workspacePath: string, port: number) {
     `运行前提：仅限本机；http://127.0.0.1:3005 服务运行中；我的 VS Code 联系窗口使用 remoteDebuggingPort ${port} 并已打开 Codex 面板。`,
     "你与我说话，执行下面的函数；senderWorkspacePath 必须是你自己的完整工作区路径：",
     "async (senderWorkspacePath, msg) => {",
-    "  const senderResponse = await fetch('http://127.0.0.1:3005/ai-call-ai/WORKSPACE_AI_CONTACT?' + new URLSearchParams({ workspacePath: senderWorkspacePath }));",
-    "  const senderContact = await senderResponse.text();",
-    "  if (!senderResponse.ok) throw new Error(senderContact);",
     "  const response = await fetch('http://127.0.0.1:3005/ai-call-ai/WORKSPACE_AI_CONTACT', {",
     "    method: 'POST',",
     "    headers: { 'content-type': 'application/json' },",
-    `    body: JSON.stringify({ workspacePath: ${JSON.stringify(workspacePath)}, remoteDebuggingPort: ${port}, senderWorkspacePath, senderContact, message: msg }),`,
+    `    body: JSON.stringify({ workspacePath: ${JSON.stringify(workspacePath)}, remoteDebuggingPort: ${port}, senderWorkspacePath, message: msg }),`,
     "  });",
     "  const text = await response.text();",
     "  if (!response.ok) throw new Error(text);",
     "  return text;",
     "};",
-    "函数会自动取得发送方已经启用的完整回信卡并随消息发送；接口会检查我的调试端口、唯一工作区窗口、唯一 Codex WebView、唯一可见且为空的输入框以及发送结果，任一条件不成立就报错且不覆盖草稿。",
+    "接口会自动发现或启动发送方的普通 VS Code + Codex 插件窗口、生成完整回信卡并随消息发送；随后检查我的调试端口、唯一工作区窗口、唯一 Codex WebView、唯一可见且为空的输入框以及发送结果，任一条件不成立就报错且不覆盖草稿。",
     "<<<END_WORKSPACE_AI_CONTACT>>>",
   ].join("\n");
 }
@@ -327,7 +317,7 @@ export default new Register().register(
     if (current) {
       return context.text(contactCard(input.workspacePath, current.port));
     }
-    const mcpServer = context.env.mcpServer;
+    const mcpServer = context.env?.mcpServer;
     if (!mcpServer) {
       return context.text("当前工作区尚未启用 AI 联系窗口。", 409);
     }
@@ -360,10 +350,17 @@ export default new Register().register(
   "/WORKSPACE_AI_CONTACT",
   new Hono().post("/", zValidator("json", callSchema), async context => {
     const input = context.req.valid("json");
-    if (!input.senderContact.includes(`我是 ${input.senderWorkspacePath} 路径的 AI。`)) {
+    let senderContact: string;
+    try {
+      const sender = await contactFind(input.senderWorkspacePath)
+        ?? await contactStart(input.senderWorkspacePath);
+      senderContact = contactCard(input.senderWorkspacePath, sender.port);
+    } catch (error) {
       return context.text(
-        "senderContact identity does not match senderWorkspacePath.",
-        400,
+        `Cannot prepare sender "${input.senderWorkspacePath}": ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        502,
       );
     }
     let contact: ContactTarget;
@@ -453,7 +450,7 @@ export default new Register().register(
           input.message,
           "",
           "你回复我时，执行以下联系卡：",
-          input.senderContact,
+          senderContact,
         ].join("\n"),
       });
       await cdp("Input.dispatchKeyEvent", {
@@ -513,7 +510,8 @@ export default new Register().register(
   callSchema,
   [
     "当用户要求当前 AI 与另一个工作区 AI 说话、对话、联系、询问或发送消息时使用。",
-    "优先直接执行对方 WORKSPACE_AI_CONTACT 中的函数；函数只使用当前 AI 自己已知的完整工作区路径，自动调用 ai-call-ai.WORKSPACE_AI_CONTACT.GET 取得已经启用的 senderContact，再把 senderWorkspacePath、senderContact 和 message 直接发送，使对方可以直接回复。",
+    "优先直接执行对方 WORKSPACE_AI_CONTACT 中的函数；函数只使用当前 AI 自己已知的完整 senderWorkspacePath 和用户消息。",
+    "POST 入口会自动发现或启动发送方的普通 VS Code + Codex 插件窗口并生成 senderContact，再发送消息，使对方可以直接回复；禁止要求调用方预先取得或提供 senderContact、remoteDebuggingPort 或执行命令。",
     "只有缺少对方联系方式、目标存在歧义或无法确定要发送的内容时才向用户询问；不得猜测或使用当前 AI 的参数代替对方参数。",
     "调用会真实发送消息且不可自动重试；目标不唯一、已有草稿或发送未验证时会明确失败。",
   ].join(" "),
