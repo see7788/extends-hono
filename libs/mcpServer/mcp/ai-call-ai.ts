@@ -41,7 +41,7 @@ type DebugTarget = {
   webSocketDebuggerUrl?: string;
 };
 type ContactTarget = {
-  page: DebugTarget;
+  page: DebugTarget & { webSocketDebuggerUrl: string };
   webview: DebugTarget & { webSocketDebuggerUrl: string };
 };
 type Contact = ContactTarget & { port: number };
@@ -80,39 +80,53 @@ function portAvailable(port: number) {
   });
 }
 
-async function contactTargetRead(
-  workspacePath: string,
-  port: number,
-): Promise<ContactTarget> {
+async function contactTargetsRead(port: number) {
   const response = await fetch(`http://127.0.0.1:${port}/json`, {
     signal: AbortSignal.timeout(1_000),
   });
   if (!response.ok) {
     throw new Error(`VS Code debugging endpoint ${port} returned ${response.status}.`);
   }
-  const targets = await response.json() as DebugTarget[];
+  return await response.json() as DebugTarget[];
+}
+
+function contactPageRead(
+  workspacePath: string,
+  port: number,
+  targets: DebugTarget[],
+) {
   const workspaceName = basename(workspacePath);
   const pages = targets.filter(target => (
     target.type === "page"
     && target.title.toLocaleLowerCase().includes(workspaceName.toLocaleLowerCase())
   ));
-  const codexWebviews = pages.length === 1
-    ? targets.filter(target => (
-        target.type === "iframe"
-        && target.parentId === pages[0]!.id
-        && new URL(target.url).searchParams.get("extensionId") === "openai.chatgpt"
-      ))
-    : [];
   const page = pages[0];
-  const webview = codexWebviews[0];
-  if (
-    pages.length !== 1
-    || codexWebviews.length !== 1
-    || !page
-    || !webview?.webSocketDebuggerUrl
-  ) {
+  if (pages.length !== 1 || !page?.webSocketDebuggerUrl) {
     throw new Error(
-      `端口 ${port} 未找到唯一的 ${workspacePath} VS Code 窗口及其 Codex 面板。`,
+      `端口 ${port} 未找到唯一的 ${workspacePath} VS Code 工作区窗口。`,
+    );
+  }
+  return {
+    ...page,
+    webSocketDebuggerUrl: page.webSocketDebuggerUrl,
+  };
+}
+
+async function contactTargetRead(
+  workspacePath: string,
+  port: number,
+): Promise<ContactTarget> {
+  const targets = await contactTargetsRead(port);
+  const page = contactPageRead(workspacePath, port, targets);
+  const codexWebviews = targets.filter(target => (
+    target.type === "iframe"
+    && target.parentId === page.id
+    && new URL(target.url).searchParams.get("extensionId") === "openai.chatgpt"
+  ));
+  const webview = codexWebviews[0];
+  if (codexWebviews.length !== 1 || !webview?.webSocketDebuggerUrl) {
+    throw new Error(
+      `端口 ${port} 未找到唯一的 ${workspacePath} Codex 插件面板。`,
     );
   }
   return {
@@ -122,6 +136,94 @@ async function contactTargetRead(
       webSocketDebuggerUrl: webview.webSocketDebuggerUrl,
     },
   };
+}
+
+async function contactPanelOpen(workspacePath: string, port: number) {
+  const page = contactPageRead(
+    workspacePath,
+    port,
+    await contactTargetsRead(port),
+  );
+  const socket = new WebSocket(page.webSocketDebuggerUrl);
+  try {
+    await new Promise<void>((fulfilled, rejected) => {
+      const timeout = setTimeout(
+        () => rejected(new Error("VS Code CDP connection timed out.")),
+        5_000,
+      );
+      socket.onopen = () => {
+        clearTimeout(timeout);
+        fulfilled();
+      };
+      socket.onerror = () => {
+        clearTimeout(timeout);
+        rejected(new Error("VS Code CDP connection failed."));
+      };
+    });
+    let id = 0;
+    const cdp = (method: string, params: Record<string, unknown>) => (
+      new Promise<void>((fulfilled, rejected) => {
+        const requestId = ++id;
+        const timeout = setTimeout(
+          () => rejected(new Error(`${method} timed out.`)),
+          5_000,
+        );
+        socket.onmessage = event => {
+          const result = JSON.parse(String(event.data)) as {
+            id?: number;
+            error?: { message?: string };
+          };
+          if (result.id !== requestId) return;
+          clearTimeout(timeout);
+          result.error
+            ? rejected(new Error(result.error.message || `${method} failed.`))
+            : fulfilled();
+        };
+        socket.onerror = () => {
+          clearTimeout(timeout);
+          rejected(new Error("VS Code CDP connection failed."));
+        };
+        socket.onclose = () => {
+          clearTimeout(timeout);
+          rejected(new Error("VS Code CDP connection closed."));
+        };
+        socket.send(JSON.stringify({ id: requestId, method, params }));
+      })
+    );
+    await cdp("Input.dispatchKeyEvent", {
+      type: "rawKeyDown",
+      key: "p",
+      code: "KeyP",
+      modifiers: 10,
+      windowsVirtualKeyCode: 80,
+    });
+    await cdp("Input.dispatchKeyEvent", {
+      type: "keyUp",
+      key: "p",
+      code: "KeyP",
+      modifiers: 10,
+      windowsVirtualKeyCode: 80,
+    });
+    await delay(500);
+    await cdp("Input.insertText", {
+      text: "Codex: Open Codex Sidebar",
+    });
+    await delay(500);
+    await cdp("Input.dispatchKeyEvent", {
+      type: "rawKeyDown",
+      key: "Enter",
+      code: "Enter",
+      windowsVirtualKeyCode: 13,
+    });
+    await cdp("Input.dispatchKeyEvent", {
+      type: "keyUp",
+      key: "Enter",
+      code: "Enter",
+      windowsVirtualKeyCode: 13,
+    });
+  } finally {
+    socket.close();
+  }
 }
 
 async function contactFind(workspacePath: string): Promise<Contact | undefined> {
@@ -152,6 +254,7 @@ async function contactStart(workspacePath: string): Promise<Contact> {
   const port = await contactPortAllocate(workspacePath);
   await new Promise<void>((fulfilled, rejected) => {
     const child = spawn(codePath, [
+      `--user-data-dir=${join(localAppData, "extends-hono", "ai-contact", String(port))}`,
       `--remote-debugging-port=${port}`,
       "--new-window",
       workspacePath,
@@ -168,13 +271,22 @@ async function contactStart(workspacePath: string): Promise<Contact> {
   });
   const deadline = Date.now() + 45_000;
   let lastError: unknown;
+  let panelOpened = false;
   while (Date.now() < deadline) {
     try {
       return { port, ...await contactTargetRead(workspacePath, port) };
     } catch (error) {
       lastError = error;
-      await delay(500);
     }
+    if (!panelOpened) {
+      try {
+        await contactPanelOpen(workspacePath, port);
+        panelOpened = true;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    await delay(500);
   }
   throw new Error(
     `联系窗口启动后未在 45 秒内就绪：${
@@ -219,9 +331,16 @@ export default new Register().register(
     if (!mcpServer) {
       return context.text("当前工作区尚未启用 AI 联系窗口。", 409);
     }
-    const contact = await contactFind(input.workspacePath)
-      ?? await contactStart(input.workspacePath);
-    return context.text(contactCard(input.workspacePath, contact.port));
+    try {
+      const contact = await contactFind(input.workspacePath)
+        ?? await contactStart(input.workspacePath);
+      return context.text(contactCard(input.workspacePath, contact.port));
+    } catch (error) {
+      return context.text(
+        error instanceof Error ? error.message : String(error),
+        500,
+      );
+    }
   }),
   contactSchema,
   [
