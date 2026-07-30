@@ -200,6 +200,8 @@ export default (
               cwd,
               env: {
                 ...process.env,
+                HONOREACT_HOST: honoHost,
+                HONOREACT_PORT: String(honoPort),
                 ...Object.fromEntries(projects.map((project, index) => [
                   `HONOREACT_URL_${project.name}`,
                   developmentUrl(servers[index]),

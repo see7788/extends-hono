@@ -271,17 +271,17 @@ async function contactStart(workspacePath: string): Promise<Contact> {
   });
   const deadline = Date.now() + 45_000;
   let lastError: unknown;
-  let panelOpened = false;
+  let panelOpenAfter = 0;
   while (Date.now() < deadline) {
     try {
       return { port, ...await contactTargetRead(workspacePath, port) };
     } catch (error) {
       lastError = error;
     }
-    if (!panelOpened) {
+    if (Date.now() >= panelOpenAfter) {
+      panelOpenAfter = Date.now() + 3_000;
       try {
         await contactPanelOpen(workspacePath, port);
-        panelOpened = true;
       } catch (error) {
         lastError = error;
       }
