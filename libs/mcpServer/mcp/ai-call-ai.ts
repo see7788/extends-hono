@@ -209,78 +209,31 @@ function contactCard(workspacePath: string, port: number) {
 
 export default new Register().register(
   "/WORKSPACE_AI_CONTACT",
-  new Hono().get("/", zValidator("query", contactSchema), async context => {
+  new Hono<McpEnv>().get("/", zValidator("query", contactSchema), async context => {
     const input = context.req.valid("query");
-    const contact = await contactFind(input.workspacePath);
-    return contact
-      ? context.text(contactCard(input.workspacePath, contact.port))
-      : context.text(
-          "当前工作区尚未启用 AI 联系窗口；请调用 ai-call-ai.WORKSPACE_AI_CONTACT_ENSURE.POST。",
-          409,
-        );
+    const current = await contactFind(input.workspacePath);
+    if (current) {
+      return context.text(contactCard(input.workspacePath, current.port));
+    }
+    const mcpServer = context.env.mcpServer;
+    if (!mcpServer) {
+      return context.text("当前工作区尚未启用 AI 联系窗口。", 409);
+    }
+    const contact = await contactFind(input.workspacePath)
+      ?? await contactStart(input.workspacePath);
+    return context.text(contactCard(input.workspacePath, contact.port));
   }),
-  contactSchema,
-  [
-    "仅在联系卡函数需要读取当前工作区已经启用的回信卡时使用。",
-    "用户直接索要名片或联系卡时改用 ai-call-ai.WORKSPACE_AI_CONTACT_ENSURE.POST，由该工具在需要时显示一次确认按钮并自动启用。",
-    "本工具不启动窗口、不要求 remoteDebuggingPort；成功时返回带 WORKSPACE_AI_CONTACT 标记的完整联系卡，尚未启用时明确失败。",
-  ].join(" "),
-  {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-).register(
-  "/WORKSPACE_AI_CONTACT_ENSURE",
-  new Hono<McpEnv>().post(
-    "/",
-    zValidator("json", contactSchema),
-    async context => {
-      const input = context.req.valid("json");
-      const current = await contactFind(input.workspacePath);
-      if (current) {
-        return context.text(contactCard(input.workspacePath, current.port));
-      }
-      const mcpServer = context.env.mcpServer;
-      if (!mcpServer) {
-        return context.text(
-          "WORKSPACE_AI_CONTACT_ENSURE must be called as an MCP tool.",
-          409,
-        );
-      }
-      if (!mcpServer.server.getClientCapabilities()?.elicitation) {
-        return context.text(
-          "当前 MCP 客户端不支持原生确认按钮，不能自动启用 AI 联系窗口。",
-          409,
-        );
-      }
-      const confirmation = await mcpServer.server.elicitInput({
-        mode: "form",
-        message: `为 ${input.workspacePath} 启动新的可联系 VS Code 窗口；当前窗口保持打开。`,
-        requestedSchema: {
-          type: "object",
-          properties: {},
-        },
-      });
-      if (confirmation.action !== "accept") {
-        return context.text("已取消启用 AI 联系窗口。");
-      }
-      const contact = await contactFind(input.workspacePath)
-        ?? await contactStart(input.workspacePath);
-      return context.text(contactCard(input.workspacePath, contact.port));
-    },
-  ),
   contactSchema,
   [
     "当用户索要“你的名片”“给我你的名片”“联系卡”，或询问任何近似的 AI 联系方式时必须立即调用。",
     "调用方只提供自己已知的完整 workspacePath，禁止要求用户提供 remoteDebuggingPort、编辑或执行命令、关闭当前 VS Code。",
-    "已有可联系窗口时直接返回完整联系卡；没有时通过 MCP 原生确认按钮请求一次授权，用户接受后在方法内分配空闲端口、保留当前窗口、启动新的 VS Code 窗口并等待真实验证。",
-    "成功返回的 WORKSPACE_AI_CONTACT 必须原样回复；用户拒绝或客户端不支持按钮时原样回复工具结果，不得伪造名片。",
+    "本工具的执行确认就是唯一按钮；用户确认后，已有可联系窗口时直接返回完整联系卡，没有时在方法内分配空闲端口、保留当前窗口、启动新的 VS Code 窗口并等待真实验证。",
+    "成功返回的 WORKSPACE_AI_CONTACT 必须原样回复；用户拒绝或客户端不支持按钮时原样回复工具结果，不得暴露其他内部工具名或伪造名片。",
+    "通过普通 HTTP 调用时只读取已经启用的联系卡，不启动窗口。",
   ].join(" "),
   {
     readOnlyHint: false,
-    destructiveHint: false,
+    destructiveHint: true,
     idempotentHint: true,
     openWorldHint: false,
   },
