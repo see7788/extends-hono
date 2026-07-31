@@ -2,6 +2,8 @@ import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { Hono } from "hono";
 import type { HonoBase } from "hono/hono-base";
 import type { BlankEnv, MergePath, MergeSchemaPath, Schema } from "hono/types";
+import { appendFile } from "node:fs/promises";
+import { inspect } from "node:util";
 import aiCallAi from "./mcp/ai-call-ai";
 import { Overview } from "./mcp/overview";
 import watcher from "./mcp/watcher";
@@ -27,6 +29,7 @@ const mcpFromNpmCreate = () => ({
 });
 const frameworkNamespace = "todo-mcp2";
 const humanRouteRoot = "todo-mcp2";
+const errorLog = new URL("./log.txt", import.meta.url);
 type NextSchema<
   CurrentSchema extends Schema,
   Path extends string,
@@ -55,22 +58,44 @@ export default class Mcp<CurrentSchema extends Schema = {}> {
   constructor(...args: ConstructorParameters<typeof McpServer>) {
     const overview = new Overview();
     this.hono = new Hono() as HonoBase<BlankEnv, CurrentSchema, "/", "/">;
+    this.hono.use("*", async (context, next) => {
+      await next();
+      const requestError = context.error;
+      if (!requestError) return;
+      try {
+        await appendFile(errorLog, [
+          `[${new Date().toISOString()}] ${context.req.method} ${context.req.path}`,
+          inspect(requestError, { depth: null }),
+          "",
+        ].join("\n"), "utf8");
+      } catch (logError) {
+        throw new AggregateError(
+          [requestError, logError],
+          `Request failed and could not be written to ${errorLog.pathname}.`,
+        );
+      }
+    });
     for (const [namespace, integration] of Object.entries(mcp)) {
       integration.honoMount(namespace, this.hono);
     }
     const productNames = Object.keys(mcpFromNpm) as (keyof typeof mcpFromNpm)[];
-    const productsReady = Promise.allSettled(
+    const productResults = Promise.allSettled(
       productNames.map(name => this.productMount(name)),
-    ).then(results => {
-      for (const [index, result] of results.entries()) {
-        if (result.status === "rejected") {
-          console.error(`[mcpFromNpm.${productNames[index]}] mount failed`, result.reason);
-        }
+    );
+    const productsReady = async () => {
+      const results = await productResults;
+      const errors = results.flatMap((result, index) => (
+        result.status === "rejected" && !this.productsMounted.has(productNames[index])
+          ? [new Error(`mcpFromNpm.${productNames[index]} mount failed.`, { cause: result.reason })]
+          : []
+      ));
+      if (errors.length) {
+        throw new AggregateError(errors, "External MCP products failed to mount.");
       }
-    });
+    };
     overview.mcp.honoMount(humanRouteRoot, this.hono);
     overview.toolsSet(async () => {
-      await productsReady;
+      await productsReady();
       return this.overviewToolsGet(overview);
     });
     const handler = createMcpHandler(() => {
@@ -88,7 +113,7 @@ export default class Mcp<CurrentSchema extends Schema = {}> {
       return server;
     });
     this.hono.all("/todo-mcp", async (ctx) => {
-      await productsReady;
+      await productsReady();
       return handler.fetch(ctx.req.raw);
     });
   }

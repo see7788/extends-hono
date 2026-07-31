@@ -38,8 +38,6 @@ export default class RegisterFromNpm<
   private definition?: Definition;
   private replacements: Replacement[] = [];
   private additions: Addition[] = [];
-  private client?: Client;
-  private transport?: Transport;
   private tools?: [string, Tool][];
   private toolCall?: ToolCall;
   private mcp: Register<any>[] = [];
@@ -129,18 +127,19 @@ export default class RegisterFromNpm<
       for (const integration of mcp) {
         integration.honoMount(namespace, hono);
       }
-      this.client = client;
-      this.transport = transport;
       this.toolCall = toolCall;
       this.tools = tools;
       this.mcp = mcp;
-    } catch (error) {
+    } catch (mountError) {
       try {
         await transport.close();
-      } catch {
-        // Preserve the original mount error.
+      } catch (closeError) {
+        throw new AggregateError(
+          [mountError, closeError],
+          `Failed to mount and close external MCP "${namespace}".`,
+        );
       }
-      throw error;
+      throw mountError;
     }
     return hono as HonoBase<
       BlankEnv,

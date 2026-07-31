@@ -8,78 +8,37 @@
 libs/mcpServer/
 ├── index.ts
 │   └── default Mcp
-│       ├── new Mcp(options)                                 # 创建当前实例的内置功能、外部产品和 /todo-mcp
-│       │   ├── productMount(name)                           # 复用进行中的连接，失败后允许重试
-│       │   ├── overviewToolsGet()                           # 读取当前实例实际可用的 tools
-│       │   └── createMcpHandler(...)                        # 只装配成功连接的外部产品
-│       ├── mcp.register(namespace, register)                # 增加项目内 Hono/MCP 功能
-│       ├── mcp.registerFromNpm(name)                        # 确认或重试指定外部 MCP
-│       └── mcp.hono
-│           ├── ALL /todo-mcp                               # 唯一 MCP Streamable HTTP 入口
-│           ├── GET /todo-mcp2/overview                     # 人类工具概览入口
-│           └── extends-electron-vite.apps.honoapp.src.routers.route("/", mcp.hono)
+│       ├── new Mcp(options)                                 # 创建 MCP 母库实例并装配内置功能
+│       ├── mcp.register(namespace, register)                # 增加项目内功能；调用 public.ts.honoMount(...)
+│       ├── mcp.registerFromNpm(name)                        # 启用外部 MCP；调用 mcpFromNpm/public.ts.mount(...)
+│       └── mcp.hono                                        # 提供给外部 Hono.route(...) 挂载的路由
+│           ├── ALL /todo-mcp                               # MCP 调用入口
+│           └── GET /todo-mcp2/overview                     # 人类工具概览入口
 ├── mcp/
-│   ├── ai-call-ai/
-│   │   ├── index.ts
-│   │   │   └── default aiCallAi
-│   │   │       ├── GET /ai-call-ai/WORKSPACE_AI_CONTACT      # 创建名片
-│   │   │       │   └── mcp.ai-call-ai.WORKSPACE_AI_CONTACT.card(...)
-│   │   │       └── POST /ai-call-ai/WORKSPACE_AI_CONTACT     # 向目标 Codex 发送消息
-│   │   │           └── mcp.ai-call-ai.WORKSPACE_AI_CONTACT.input(...)
-│   │   └── WORKSPACE_AI_CONTACT.ts
-│   │       ├── cardSchema
-│   │       ├── inputSchema
-│   │       └── default WORKSPACE_AI_CONTACT          # 让本机不同工作区的 VS Code Codex 交换联系卡和消息
-│   │           ├── card(workspacePath)                # 发现热窗口并生成联系卡
-│   │           └── input(input)                       # 替换输入框内容并提交
-│   ├── overview.ts
-│   │   ├── Overview
-│   │   │   ├── toolsSet(...)                          # 接收当前实例的工具读取入口
-│   │   │   └── GET /todo-mcp2/overview
-│   │   │       ├── name                               # 精确返回一个完整工具契约
-│   │   │       ├── query                              # 按名称和用途搜索
-│   │   │       ├── offset                             # 分页起点，默认 0
-│   │   │       └── limit                              # 返回数量，默认 20，最多 50
-│   │   └── default overview                           # 保留默认实例导出
-│   └── watcher.ts
-│       └── default watcher
-│           ├── GET /watcher/definition               # 生成 watcher 启动定义
-│           ├── POST /watcher/report                  # 输出规范化异常报告
-│           └── POST /watcher/lifecycle               # 输出 online/offline 生命周期
+│   ├── ai-call-ai/                                    # 让不同工作区的 Codex 交换联系卡和消息
+│   ├── overview.ts                                    # 提供工具搜索和单项工具契约
+│   └── watcher.ts                                     # 提供 watcher 定义、报告和生命周期接口
 ├── mcpFromNpm/
-│   ├── browser.ts
-│   │   └── default browser                           # 控制隔离浏览器的页面交互、调试和性能审计
-│   │       ├── browser.list_pages 等浏览器原生 tools
-│   │       └── GET /browser/environment/check
-│   ├── codegraph.ts
-│   │   └── default codegraph                         # 查询源码符号、调用链和修改影响范围
-│   │       ├── codegraph.explore
-│   │       └── GET /codegraph/scope_maintenance
-│   ├── docs.ts
-│   │   └── default docs                              # 查询第三方库的最新文档和代码示例
-│   │       ├── docs.resolve-library-id
-│   │       └── docs.query-docs
-│   ├── io.ts
-│   │   └── default io                                # 在允许的项目根目录内读取、写入、编辑、搜索和移动文件
-│   │       └── io.read_text_file、io.write_file 等官方 filesystem tools
-│   ├── workspace.ts
-│   │   └── default workspace                         # 管理本机文件、目录、命令和进程
-│   │       └── workspace.read_file、workspace.write_file 等 Desktop Commander tools
+│   ├── browser.ts                                     # 接入浏览器 MCP
+│   ├── codegraph.ts                                   # 接入源码关系 MCP
+│   ├── docs.ts                                        # 接入第三方文档 MCP
+│   ├── io.ts                                          # 接入受限文件系统 MCP
+│   ├── workspace.ts                                   # 接入本机工作区 MCP
 │   └── public.ts
-│       └── default RegisterFromNpm                   # 外部 MCP 代理配件
-│           ├── Client / Transport / tools             # 当前 Mcp 实例独立保存连接与工具目录
-│           ├── register(...)
-│           ├── replace(...)
-│           ├── add(...)
-│           ├── mount(...)
-│           ├── serverMount(...)
-│           └── toolsGet(...)
+│       └── default RegisterFromNpm                    # 外部 MCP 接入配件
+│           ├── register(...)                          # 登记外部 MCP 的名称、连接和说明
+│           ├── replace(...)                           # 调整指定外部工具的公开契约
+│           ├── add(...)                               # 增加随外部 MCP 一起提供的项目内功能
+│           ├── mount(...)                             # 连接外部 MCP 并挂载附加 Hono 路由
+│           ├── serverMount(...)                       # 把已连接工具注册到 McpServer
+│           └── toolsGet(...)                          # 生成当前外部 MCP 的工具概览数据
 ├── public.ts
 │   └── default Register                              # 项目内 Hono 功能配件
-│       ├── register(...)
-│       ├── honoMount(...)
-│       ├── serverMount(...)
-│       └── toolsGet(...)
+│       ├── register(...)                              # 登记一个 Hono 动作
+│       ├── honoMount(...)                             # 挂载 Hono 路由；调用 Hono.route(...)
+│       ├── serverMount(...)                           # 注册 MCP 工具；调用 McpServer.registerTool(...)
+│       └── toolsGet(...)                              # 生成工具概览数据
+├── log.txt                                            # 运行时自动追加 Hono 接口错误
 ├── package.json
 └── tsconfig.json
 ```
@@ -192,10 +151,11 @@ http://127.0.0.1:3005/todo-mcp2/overview?name=browser.list_pages
 
 ## 运行语义
 
-- 每个 `Mcp` 实例独立持有外部 MCP 的 `Client`、`Transport`、工具目录和调用函数，不与其他 `Mcp` 实例串状态。
+- 每个 `Mcp` 实例独立建立外部 MCP 连接并保存工具目录和调用函数，不与其他 `Mcp` 实例串状态。
 - 同一产品的并发首次连接复用同一个 `productMount` Promise，不重复启动外部进程。
-- 单个外部 MCP 启动失败时会输出明确错误、清除失败状态并允许 `registerFromNpm(name)` 重试；其他已成功产品和 `/todo-mcp` 继续可用。
+- 任一外部 MCP 启动失败时，`/todo-mcp` 和工具概览直接失败；失败状态会清除，`registerFromNpm(name)` 可显式重试。
+- Hono 接口异常会把请求方法、接口路径和完整原始错误追加到 `libs/mcpServer/log.txt`，不把失败响应改写成成功。
 - overview 每次读取当前实例实际注册的工具，晚于构造发生的 `register(...)` 也会进入结果。
 - 多个 AI 可以同时访问同一个 `/todo-mcp`；它们共享该 `Mcp` 实例背后的 browser、io、workspace 等外部产品状态，不提供每个 AI 独立的浏览器或文件系统副本。
-- 当前公开接口没有关闭方法；成功建立的外部 MCP 连接随宿主进程生命周期结束，连接失败时会立即关闭对应 Transport。
+- 当前公开接口没有关闭方法；成功建立的外部 MCP 连接随宿主进程生命周期结束；连接失败时立即关闭对应 Transport，关闭也失败时同时抛出两个错误。
 - MCP 客户端通常缓存工具描述和 input schema；服务热更新后需要重新连接 MCP 或创建新会话才能刷新客户端元数据。
