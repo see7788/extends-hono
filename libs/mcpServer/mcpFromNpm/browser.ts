@@ -15,6 +15,7 @@ const browser = new RegisterFromNpm().register({
       "--isolated=true",
       "--no-usage-statistics",
       "--no-performance-crux",
+      "--allow-unrestricted-paths",
     ],
   }),
 });
@@ -81,7 +82,7 @@ const toolContracts = {
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   navigate_page: {
-    description: "需要让当前页打开 URL、前进、后退或重载时使用；必填 type，URL 导航时提供 url，可选缓存、beforeunload、初始化脚本和超时；成功完成导航；可能丢失页面状态并访问外部网络；导航或超时失败时确认 URL、页面和网络后重试。",
+    description: "需要让当前页打开 URL、前进、后退或重载时使用；必填 type，URL 导航时提供 url，handleBeforeUnload 使用 accept 或 dismiss，可选缓存、初始化脚本和超时；成功完成导航；可能丢失页面状态并访问外部网络；导航或超时失败时确认 URL、页面和网络后重试。",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
   },
   new_page: {
