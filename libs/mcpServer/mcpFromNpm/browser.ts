@@ -7,9 +7,9 @@ import RegisterFromNpm from "./public";
 const browser = new RegisterFromNpm().register({
   namespace: "browser",
   transport: () => new StdioClientTransport({
-    command: process.platform === "win32" ? "npx.cmd" : "npx",
+    command: process.platform === "win32" ? "pnpm.cmd" : "pnpm",
     args: [
-      "-y",
+      "dlx",
       "chrome-devtools-mcp@1.6.0",
       "--headless=true",
       "--isolated=true",

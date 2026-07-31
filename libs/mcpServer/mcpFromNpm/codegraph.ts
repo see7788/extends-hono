@@ -122,8 +122,8 @@ const scopeMaintenance = {
 const mcp = new RegisterFromNpm().register({
   namespace: "codegraph",
   transport: () => new StdioClientTransport({
-    command: process.platform === "win32" ? "npx.cmd" : "npx",
-    args: ["-y", "@colbymchenry/codegraph@1.5.0", "serve", "--mcp"],
+    command: process.platform === "win32" ? "pnpm.cmd" : "pnpm",
+    args: ["dlx", "@colbymchenry/codegraph@1.5.0", "serve", "--mcp"],
   }),
 }).replace({
   toolName: "codegraph_explore",
