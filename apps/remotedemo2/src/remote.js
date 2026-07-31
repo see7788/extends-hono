@@ -17,6 +17,10 @@
   let stream;
   let activeElement;
 
+  const errorThrow = (error) => queueMicrotask(() => {
+    throw error instanceof Error ? error : new Error(String(error));
+  });
+
   const pointRead = (message) => ({
     x: message.x * window.innerWidth,
     y: message.y * window.innerHeight,
@@ -196,7 +200,8 @@
         try {
           controlReceive(JSON.parse(messageEvent.data));
         } catch (error) {
-          console.error("远程控制消息执行失败", error);
+          connectionClose(signal.connectionId);
+          errorThrow(new Error("远程控制消息执行失败", { cause: error }));
         }
       });
     });
@@ -215,7 +220,7 @@
     });
   };
 
-  signaling.addEventListener("message", async (event) => {
+  const signalReceive = async (event) => {
     const signal = JSON.parse(event.data);
     if (signal.type === "offer") {
       await offerReceive(signal);
@@ -238,11 +243,20 @@
       return;
     }
     if (signal.type === "error") {
-      console.error("WebRTC 信令错误", signal.message);
+      throw new Error(`WebRTC 信令错误：${signal.message}`);
     }
+  };
+  signaling.addEventListener("message", (event) => {
+    signalReceive(event).catch(error => {
+      for (const connectionId of [...connections.keys()]) connectionClose(connectionId);
+      signaling.close();
+      errorThrow(error);
+    });
   });
   signaling.addEventListener("error", () => {
-    console.error("WebRTC 信令连接失败");
+    for (const connectionId of [...connections.keys()]) connectionClose(connectionId);
+    signaling.close();
+    errorThrow(new Error("WebRTC 信令连接失败"));
   });
 
   const button = document.createElement("button");
@@ -260,31 +274,34 @@
     "font:14px system-ui,sans-serif",
     "cursor:pointer",
   ].join(";");
-  button.addEventListener("click", async () => {
+  const assistanceStart = async () => {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        frameRate: { ideal: 15, max: 20 },
+      },
+      audio: false,
+      preferCurrentTab: true,
+      selfBrowserSurface: "include",
+      surfaceSwitching: "include",
+    });
+    button.remove();
+    stream.getVideoTracks()[0].addEventListener("ended", () => {
+      globalThis.__REMOTE_DEMO2__?.close();
+    });
+    const controlUrl = configuration.controlBaseUrl
+      + "?source=" + encodeURIComponent(sourceId);
+    let copied = true;
     try {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          frameRate: { ideal: 15, max: 20 },
-        },
-        audio: false,
-        preferCurrentTab: true,
-        selfBrowserSurface: "include",
-        surfaceSwitching: "include",
-      });
-      button.remove();
-      stream.getVideoTracks()[0].addEventListener("ended", () => {
-        globalThis.__REMOTE_DEMO2__?.close();
-      });
-      const controlUrl = configuration.controlBaseUrl
-        + "?source=" + encodeURIComponent(sourceId);
-      try {
-        await navigator.clipboard.writeText(controlUrl);
-      } catch {}
-      console.log("远程控制地址（已尝试复制）:", controlUrl);
-      prompt("把这个控制地址交给协助者", controlUrl);
+      await navigator.clipboard.writeText(controlUrl);
     } catch (error) {
-      console.error("开始远程协助失败", error);
+      copied = false;
+      errorThrow(new Error("远程控制地址自动复制失败", { cause: error }));
     }
+    console.log("远程控制地址（已尝试复制）:", controlUrl);
+    prompt(copied ? "把这个控制地址交给协助者" : "自动复制失败，请手动复制这个地址", controlUrl);
+  };
+  button.addEventListener("click", () => {
+    assistanceStart().catch(errorThrow);
   }, { once: true });
   document.documentElement.appendChild(button);
 

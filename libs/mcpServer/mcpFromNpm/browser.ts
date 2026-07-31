@@ -1,5 +1,6 @@
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import Register from "../public";
 import RegisterFromNpm from "./public";
@@ -146,23 +147,27 @@ for (const [toolName, contract] of Object.entries(toolContracts)) {
 const mcp = browser.add(toolCall => new Register().register(
   "/environment/check",
   new Hono().get("/", async context => {
+    let result: Awaited<ReturnType<typeof toolCall>>;
     try {
-      const result = await toolCall("list_pages", {});
-      if (result.isError) {
-        const errors = result.content.flatMap(content => content.type === "text" ? [content.text] : []);
-        return context.text(JSON.stringify(
-          errors.length ? errors : ["browser.list_pages failed"],
-        ));
-      }
-      return context.text("[]");
+      result = await toolCall("list_pages", {});
     } catch (error) {
-      return context.text(JSON.stringify([
-        error instanceof Error ? error.message : String(error),
-      ]));
+      throw new HTTPException(502, {
+        message: JSON.stringify([
+          error instanceof Error ? error.message : String(error),
+        ]),
+        cause: error,
+      });
     }
+    if (result.isError) {
+      const errors = result.content.flatMap(content => content.type === "text" ? [content.text] : []);
+      throw new HTTPException(502, {
+        message: JSON.stringify(errors.length ? errors : ["browser.list_pages failed"]),
+      });
+    }
+    return context.text("[]");
   }),
   z.object({}),
-  "在依赖 browser 工具前检查隔离浏览器 MCP 是否可调用；无输入；成功返回 JSON 字符串数组，空数组表示 list_pages 可用，非空数组包含上游错误；只读取浏览器页签且不修改页面；出现错误时按返回消息恢复 browser transport 或浏览器进程后重试。",
+  "在依赖 browser 工具前检查隔离浏览器 MCP 是否可调用；无输入；成功返回空 JSON 字符串数组，上游失败返回 502 和错误数组；只读取浏览器页签且不修改页面；出现错误时按返回消息恢复 browser transport 或浏览器进程后重试。",
   {
     readOnlyHint: true,
     destructiveHint: false,

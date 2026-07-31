@@ -1,4 +1,4 @@
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import RegisterFromNpm from "./public";
 
 const mcp = new RegisterFromNpm().register({

@@ -1,13 +1,14 @@
 import { serve } from "@hono/node-server";
+import ubuntu from "extends-ssh/src/Ubuntu.ts";
 import { Hono } from "hono";
 import { readFile } from "node:fs/promises";
-import privateCloud from "../../../../extends-ssh/src/webrtcProxyState.ts";
 
+const privateCloud = ubuntu.webrtcProxyState;
 const hostname = "127.0.0.1";
-const port = 3011;
+const port = 32223;
 const app = new Hono();
 const remoteScript = await readFile(
-  new URL("../remote.js", import.meta.url),
+  new URL("../dist/remote.js", import.meta.url),
   "utf8",
 );
 
@@ -67,6 +68,15 @@ const controllerHtml = `<!doctype html>
     let composing = false;
     let pointerMovePending = false;
 
+    const errorThrow = (error) => queueMicrotask(() => {
+      throw error instanceof Error ? error : new Error(String(error));
+    });
+    const connectionFail = (error) => {
+      connection.close();
+      signaling.close();
+      errorThrow(error);
+    };
+
     const signalSend = (signal) => {
       if (signaling.readyState !== WebSocket.OPEN) {
         throw new Error("信令连接尚未打开");
@@ -78,9 +88,10 @@ const controllerHtml = `<!doctype html>
       }));
     };
     const controlSend = (message) => {
-      if (control.readyState === "open") {
-        control.send(JSON.stringify(message));
+      if (control.readyState !== "open") {
+        throw new Error("远程控制连接尚未打开");
       }
+      control.send(JSON.stringify(message));
     };
     const modifiers = (event) => ({
       altKey: event.altKey,
@@ -110,7 +121,7 @@ const controllerHtml = `<!doctype html>
       screen.style.height = screen.videoHeight + "px";
     });
 
-    signaling.addEventListener("message", async (event) => {
+    const signalReceive = async (event) => {
       const signal = JSON.parse(event.data);
       if (signal.type === "open") {
         const description = await connection.createOffer();
@@ -138,9 +149,12 @@ const controllerHtml = `<!doctype html>
       if (signal.type === "error") {
         throw new Error(signal.message);
       }
+    };
+    signaling.addEventListener("message", (event) => {
+      signalReceive(event).catch(connectionFail);
     });
     signaling.addEventListener("error", () => {
-      console.error("WebRTC 信令连接失败");
+      connectionFail(new Error("WebRTC 信令连接失败"));
     });
 
     screen.addEventListener("pointerdown", (event) => {
@@ -229,10 +243,7 @@ app.get("/", (context) => context.html(controllerHtml));
 app.get("/remote.js", (context) => {
   context.header("access-control-allow-origin", "*");
   context.header("content-type", "text/javascript; charset=UTF-8");
-  return context.body(remoteScript.replace(
-    "__REMOTE_DEMO2_CONFIGURATION__",
-    JSON.stringify(configuration),
-  ));
+  return context.body(remoteScript);
 });
 
 app.onError((error, context) => context.text(error.message, 500));

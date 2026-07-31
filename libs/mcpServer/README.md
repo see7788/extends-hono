@@ -63,6 +63,7 @@ const router = new Hono()
 ```ts
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import WORKSPACE_AI_CONTACT, {
   cardSchema,
   inputSchema,
@@ -77,10 +78,10 @@ new Hono().get("/", zValidator("query", cardSchema), async context => {
       await workspaceAiContact.card(input.workspacePath),
     );
   } catch (error) {
-    return context.text(
-      error instanceof Error ? error.message : String(error),
-      409,
-    );
+    throw new HTTPException(409, {
+      message: error instanceof Error ? error.message : String(error),
+      cause: error,
+    });
   }
 });
 
@@ -102,10 +103,10 @@ new Hono().post("/", zValidator("json", inputSchema), async context => {
       ].join("\n"),
     }));
   } catch (error) {
-    return context.text(
-      error instanceof Error ? error.message : String(error),
-      502,
-    );
+    throw new HTTPException(502, {
+      message: error instanceof Error ? error.message : String(error),
+      cause: error,
+    });
   }
 });
 ```

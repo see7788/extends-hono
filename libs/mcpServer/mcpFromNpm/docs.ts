@@ -1,4 +1,4 @@
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import RegisterFromNpm from "./public";
 
 const mcp = new RegisterFromNpm().register({

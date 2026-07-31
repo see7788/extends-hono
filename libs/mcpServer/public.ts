@@ -1,6 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { AnySchema } from "@modelcontextprotocol/sdk/server/zod-compat.js";
-import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+import type { McpServer, Tool, ToolAnnotations } from "@modelcontextprotocol/server";
 import { Hono, type Env } from "hono";
 import type { HonoBase } from "hono/hono-base";
 import { METHODS } from "hono/router";
@@ -10,9 +8,9 @@ import type {
   MergeSchemaPath,
   Schema,
 } from "hono/types";
-import type { z } from "zod";
+import { z } from "zod";
 
-type ToolContractAnnotations = ToolAnnotations & Required<Pick<
+type ToolContractAnnotations = Omit<ToolAnnotations, "title"> & Required<Pick<
   ToolAnnotations,
   "readOnlyHint" | "destructiveHint" | "idempotentHint" | "openWorldHint"
 >>;
@@ -86,17 +84,24 @@ export default class Register<CurrentSchema extends Schema = {}> {
     return mcp;
   }
 
-  mount<ParentSchema extends Schema>(
+  serverMount(
     namespace: string,
     server: McpServer,
-    hono: HonoBase<BlankEnv, ParentSchema, "/", "/">,
+    namespaceInstructions?: string,
   ) {
     for (const definition of this.definitionsValue) {
       const [path, action, inputSchema, description, annotations] = definition;
       const method = action.routes[0]!.method.toUpperCase();
-      server.registerTool<AnySchema, typeof inputSchema>(
+      const { title: _annotationTitle, ...toolAnnotations } = annotations as ToolAnnotations;
+      server.registerTool(
         `${namespace}.${path.split("/").filter(Boolean).join(".")}.${method}`,
-        { description, inputSchema, annotations },
+        {
+          description: namespaceInstructions
+            ? `${namespaceInstructions} ${description}`
+            : description,
+          inputSchema,
+          annotations: toolAnnotations,
+        },
         async (arguments_: Record<string, unknown>) => {
           let requestPath = "/";
           if (method === "GET" || method === "HEAD") {
@@ -129,6 +134,29 @@ export default class Register<CurrentSchema extends Schema = {}> {
         },
       );
     }
+  }
+
+  toolsGet(namespace: string): Tool[] {
+    return this.definitionsValue.map(definition => {
+      const [path, action, inputSchema, description, annotations] = definition;
+      const method = action.routes[0]!.method.toUpperCase();
+      const { title: _annotationTitle, ...toolAnnotations } = annotations as ToolAnnotations;
+      return {
+        name: `${namespace}.${path.split("/").filter(Boolean).join(".")}.${method}`,
+        description,
+        inputSchema: z.toJSONSchema(inputSchema, {
+          io: "input",
+          target: "draft-2020-12",
+        }) as Tool["inputSchema"],
+        annotations: toolAnnotations,
+      };
+    });
+  }
+
+  honoMount<ParentSchema extends Schema>(
+    namespace: string,
+    hono: HonoBase<BlankEnv, ParentSchema, "/", "/">,
+  ) {
     hono.route(`/${namespace}`, this.honoValue);
   }
 }
