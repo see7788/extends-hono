@@ -1,17 +1,32 @@
-import { StreamableHTTPTransport } from "@hono/mcp";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { Hono } from "hono";
 import type { HonoBase } from "hono/hono-base";
 import type { BlankEnv, MergePath, MergeSchemaPath, Schema } from "hono/types";
+import aiCallAi from "./mcp/ai-call-ai";
+import { Overview } from "./mcp/overview";
 import watcher from "./mcp/watcher";
 import browser from "./mcpFromNpm/browser";
 import codegraph from "./mcpFromNpm/codegraph";
 import docs from "./mcpFromNpm/docs";
-import type RegisterFromNpm from "./mcpFromNpm/public";
+import io from "./mcpFromNpm/io";
+import RegisterFromNpm from "./mcpFromNpm/public";
 import workspace from "./mcpFromNpm/workspace";
 import type Register from "./public";
 
-const mcpFromNpm = { browser, codegraph, docs, workspace };
+const mcp = {
+  "ai-call-ai": aiCallAi,
+  watcher,
+};
+const mcpFromNpm = { browser, codegraph, docs, io, workspace };
+const mcpFromNpmCreate = () => ({
+  browser: new RegisterFromNpm(browser),
+  codegraph: new RegisterFromNpm(codegraph),
+  docs: new RegisterFromNpm(docs),
+  io: new RegisterFromNpm(io),
+  workspace: new RegisterFromNpm(workspace),
+});
+const frameworkNamespace = "todo-mcp2";
+const humanRouteRoot = "todo-mcp2";
 type NextSchema<
   CurrentSchema extends Schema,
   Path extends string,
@@ -28,35 +43,53 @@ type NextFromNpmSchema<
   : CurrentSchema;
 
 export default class Mcp<CurrentSchema extends Schema = {}> {
-  private readonly server: McpServer;
+  private readonly registrations: [string, Register<any>][] = [];
+  private readonly mcpFromNpm = mcpFromNpmCreate();
+  private readonly productMounts = new Map<
+    keyof typeof mcpFromNpm,
+    Promise<void>
+  >();
+  private readonly productsMounted = new Set<keyof typeof mcpFromNpm>();
   readonly hono: HonoBase<BlankEnv, CurrentSchema, "/", "/">;
 
   constructor(...args: ConstructorParameters<typeof McpServer>) {
-    this.server = new McpServer(...args);
+    const overview = new Overview();
     this.hono = new Hono() as HonoBase<BlankEnv, CurrentSchema, "/", "/">;
-    watcher.mount("watcher", this.server, this.hono);
-    this.hono.get("/watcher/time", async context => {
-      try {
-        const answer = await this.server.server.createMessage({
-          messages: [{
-            role: "user",
-            content: { type: "text", text: "现在几点" },
-          }],
-          maxTokens: 4096,
-        });
-        console.log("[aiAnswer]", answer.content);
-        return context.json(answer.content);
-      } catch (error) {
-        console.error("[aiAnswer]", error);
-        return context.text(error instanceof Error ? error.message : String(error), 503);
+    for (const [namespace, integration] of Object.entries(mcp)) {
+      integration.honoMount(namespace, this.hono);
+    }
+    const productNames = Object.keys(mcpFromNpm) as (keyof typeof mcpFromNpm)[];
+    const productsReady = Promise.allSettled(
+      productNames.map(name => this.productMount(name)),
+    ).then(results => {
+      for (const [index, result] of results.entries()) {
+        if (result.status === "rejected") {
+          console.error(`[mcpFromNpm.${productNames[index]}] mount failed`, result.reason);
+        }
       }
     });
-    const transport = new StreamableHTTPTransport();
-    let connection: Promise<void> | undefined;
-    this.hono.all("/mcp", async (ctx) => {
-      connection ??= this.server.connect(transport);
-      await connection;
-      return transport.handleRequest(ctx);
+    overview.mcp.honoMount(humanRouteRoot, this.hono);
+    overview.toolsSet(async () => {
+      await productsReady;
+      return this.overviewToolsGet(overview);
+    });
+    const handler = createMcpHandler(() => {
+      const server = new McpServer(...args);
+      for (const [namespace, integration] of Object.entries(mcp)) {
+        integration.serverMount(namespace, server);
+      }
+      for (const [namespace, integration] of this.registrations) {
+        integration.serverMount(namespace, server);
+      }
+      for (const name of this.productsMounted) {
+        this.mcpFromNpm[name].serverMount(server);
+      }
+      overview.mcp.serverMount(frameworkNamespace, server);
+      return server;
+    });
+    this.hono.all("/todo-mcp", async (ctx) => {
+      await productsReady;
+      return handler.fetch(ctx.req.raw);
     });
   }
 
@@ -67,14 +100,49 @@ export default class Mcp<CurrentSchema extends Schema = {}> {
     namespace: Namespace,
     mcp: Register<FragmentSchema>,
   ): Mcp<NextSchema<CurrentSchema, `/${Namespace}`, FragmentSchema>> {
-    mcp.mount(namespace, this.server, this.hono);
+    mcp.honoMount(namespace, this.hono);
+    this.registrations.push([namespace, mcp]);
     return this as Mcp<NextSchema<CurrentSchema, `/${Namespace}`, FragmentSchema>>;
+  }
+
+  private productMount(name: keyof typeof mcpFromNpm) {
+    const mounted = this.productMounts.get(name);
+    if (mounted) return mounted;
+    const mounting = this.mcpFromNpm[name]
+      .mount(this.hono)
+      .then(() => {
+        this.productsMounted.add(name);
+      })
+      .catch(error => {
+        this.productsMounted.delete(name);
+        if (this.productMounts.get(name) === mounting) {
+          this.productMounts.delete(name);
+        }
+        throw error;
+      });
+    this.productMounts.set(name, mounting);
+    return mounting;
+  }
+
+  private overviewToolsGet(overview: Overview) {
+    const tools: ReturnType<Register["toolsGet"]> = [];
+    for (const [namespace, integration] of Object.entries(mcp)) {
+      tools.push(...integration.toolsGet(namespace));
+    }
+    for (const [namespace, integration] of this.registrations) {
+      tools.push(...integration.toolsGet(namespace));
+    }
+    for (const name of this.productsMounted) {
+      tools.push(...this.mcpFromNpm[name].toolsGet());
+    }
+    tools.push(...overview.mcp.toolsGet(frameworkNamespace));
+    return tools;
   }
 
   async registerFromNpm<const Name extends keyof typeof mcpFromNpm>(
     name: Name,
   ): Promise<Mcp<NextFromNpmSchema<CurrentSchema, (typeof mcpFromNpm)[Name]>>> {
-    await mcpFromNpm[name].mount(this.server, this.hono);
+    await this.productMount(name);
     return this as Mcp<
       NextFromNpmSchema<CurrentSchema, (typeof mcpFromNpm)[Name]>
     >;

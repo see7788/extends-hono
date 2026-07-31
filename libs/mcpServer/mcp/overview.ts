@@ -18,13 +18,13 @@ const inputSchema = z.object({
   ),
 }).strict();
 
-class Overview {
-  private tools = Promise.resolve<Tool[]>([]);
+export class Overview {
+  private toolsGet = () => Promise.resolve<Tool[]>([]);
 
   readonly mcp = new Register().register(
     "/overview",
     new Hono().get("/", async context => {
-      const tools = await this.tools;
+      const tools = await this.toolsGet();
       const input = inputSchema.parse(context.req.query());
       if (input.name !== undefined) {
         const tool = tools.find(item => item.name === input.name);
@@ -67,8 +67,8 @@ class Overview {
     },
   );
 
-  toolsSet(tools: Promise<Tool[]>) {
-    this.tools = tools;
+  toolsSet(toolsGet: () => Promise<Tool[]>) {
+    this.toolsGet = toolsGet;
     return this;
   }
 }

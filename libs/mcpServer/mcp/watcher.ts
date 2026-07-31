@@ -114,7 +114,7 @@ export default new Register().register(
   new Hono().post("/", zValidator("json", lifecycleSchema), context => {
     const input = context.req.valid("json");
     const rawText = `[watcher:${input.watcherId}][workspace:${input.workspacePath}] ${input.status}`;
-    console.log(11111111111111111,rawText);
+    console.log(rawText);
     return context.json({ rawText });
   }),
   lifecycleSchema,
