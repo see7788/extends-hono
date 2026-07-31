@@ -10,7 +10,7 @@ const browser = new RegisterFromNpm().register({
     command: process.platform === "win32" ? "npx.cmd" : "npx",
     args: [
       "-y",
-      "chrome-devtools-mcp@1.5.0",
+      "chrome-devtools-mcp@1.6.0",
       "--headless=true",
       "--isolated=true",
       "--no-usage-statistics",

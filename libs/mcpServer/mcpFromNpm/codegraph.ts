@@ -123,7 +123,7 @@ const mcp = new RegisterFromNpm().register({
   namespace: "codegraph",
   transport: () => new StdioClientTransport({
     command: process.platform === "win32" ? "npx.cmd" : "npx",
-    args: ["-y", "@colbymchenry/codegraph@1.4.1", "serve", "--mcp"],
+    args: ["-y", "@colbymchenry/codegraph@1.5.0", "serve", "--mcp"],
   }),
 }).replace({
   toolName: "codegraph_explore",
