@@ -1,0 +1,39 @@
+{
+  "name": "windows-named-pipe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./index.tsx": "./index.tsx",
+    "./nodeService.ts": "./nodeService.ts",
+    "./service.ts": "./service.ts",
+    "./store.ts": "./store.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.12",
+    "extends-ssh": "workspace:*",
+    "extends-zustand": "workspace:*",
+    "hono": "^4.12.33",
+    "immer": "10.2.0",
+    "zod": "^4.4.3",
+    "zustand": "5.0.13"
+  },
+  "dependenciesMeta": {
+    "extends-ssh": {
+      "injected": true
+    },
+    "extends-zustand": {
+      "injected": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "author": "see7788",
+  "license": "MIT"
+}
