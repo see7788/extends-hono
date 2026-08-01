@@ -1,9 +1,9 @@
 import { serve } from "@hono/node-server";
-import ubuntu from "extends-ssh/src/Ubuntu.ts";
+import ubuntu from "extends-ssh/Ubuntu/index.ts";
 import { Hono } from "hono";
 import { readFile } from "node:fs/promises";
 
-const privateCloud = ubuntu.webrtcProxyState;
+const privateCloud = ubuntu.webrtcProxy.state;
 const hostname = "127.0.0.1";
 const port = 32223;
 const app = new Hono();

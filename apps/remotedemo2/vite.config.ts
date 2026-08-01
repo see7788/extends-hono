@@ -1,8 +1,8 @@
-import ubuntu from "extends-ssh/src/Ubuntu.ts";
+import ubuntu from "extends-ssh/Ubuntu/index.ts";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
-const privateCloud = ubuntu.webrtcProxyState;
+const privateCloud = ubuntu.webrtcProxy.state;
 const hostname = "127.0.0.1";
 const port = 32223;
 const signalingProtocol = privateCloud.peerServer.secure ? "wss" : "ws";
