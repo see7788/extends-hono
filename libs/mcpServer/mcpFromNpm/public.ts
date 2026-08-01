@@ -30,6 +30,19 @@ type ToolCall = (
   arguments_: Record<string, unknown>,
 ) => Promise<CallToolResult>;
 type Addition = Register<any> | ((toolCall: ToolCall) => Register<any>);
+type Runtime = {
+  childPid?: number;
+  client: Client;
+  closing?: Promise<void>;
+  transport: Transport;
+  transportClosed: boolean;
+};
+
+const childPidRead = (transport: Transport) => {
+  if (!("pid" in transport)) return;
+  const pid = transport.pid;
+  return typeof pid === "number" && Number.isInteger(pid) && pid > 0 ? pid : undefined;
+};
 
 export default class RegisterFromNpm<
   Namespace extends string = string,
@@ -41,6 +54,7 @@ export default class RegisterFromNpm<
   private tools?: [string, Tool][];
   private toolCall?: ToolCall;
   private mcp: Register<any>[] = [];
+  private runtime?: Runtime;
 
   constructor(source?: RegisterFromNpm<Namespace, CurrentSchema>) {
     if (!source) return;
@@ -78,6 +92,7 @@ export default class RegisterFromNpm<
     hono: HonoBase<BlankEnv, ParentSchema, "/", "/">,
   ) {
     if (!this.definition) throw new Error("The npm MCP product has not been registered.");
+    if (this.runtime) throw new Error(`External MCP "${this.definition.namespace}" is already mounted.`);
     const { namespace } = this.definition;
     const transport = await this.definition.transport();
     const client = new Client({ name: `${namespace}-proxy`, version: "0.0.0" });
@@ -127,9 +142,19 @@ export default class RegisterFromNpm<
       for (const integration of mcp) {
         integration.honoMount(namespace, hono);
       }
+      const runtime: Runtime = {
+        childPid: childPidRead(transport),
+        client,
+        transport,
+        transportClosed: false,
+      };
+      client.onclose = () => {
+        runtime.transportClosed = true;
+      };
       this.toolCall = toolCall;
       this.tools = tools;
       this.mcp = mcp;
+      this.runtime = runtime;
     } catch (mountError) {
       try {
         await transport.close();
@@ -147,6 +172,26 @@ export default class RegisterFromNpm<
       "/",
       "/"
     >;
+  }
+
+  async healthAudit() {
+    const runtime = this.runtime;
+    if (!runtime?.childPid) return false;
+    if (!runtime.transportClosed && childPidRead(runtime.transport)) return false;
+    await this.close();
+    return true;
+  }
+
+  async close() {
+    const runtime = this.runtime;
+    if (!runtime) return;
+    runtime.closing ??= runtime.client.close();
+    await runtime.closing;
+    if (this.runtime !== runtime) return;
+    this.runtime = undefined;
+    this.toolCall = undefined;
+    this.tools = undefined;
+    this.mcp = [];
   }
 
   serverMount(server: McpServer) {

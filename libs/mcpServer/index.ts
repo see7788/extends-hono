@@ -53,6 +53,8 @@ export default class Mcp<CurrentSchema extends Schema = {}> {
     Promise<void>
   >();
   private readonly productsMounted = new Set<keyof typeof mcpFromNpm>();
+  private healthAuditError?: unknown;
+  private healthAuditRunning?: Promise<void>;
   readonly hono: HonoBase<BlankEnv, CurrentSchema, "/", "/">;
 
   constructor(...args: ConstructorParameters<typeof McpServer>) {
@@ -83,16 +85,34 @@ export default class Mcp<CurrentSchema extends Schema = {}> {
       productNames.map(name => this.productMount(name)),
     );
     const productsReady = async () => {
+      if (this.healthAuditError) {
+        throw new Error("External MCP health audit failed.", { cause: this.healthAuditError });
+      }
       const results = await productResults;
       const errors = results.flatMap((result, index) => (
-        result.status === "rejected" && !this.productsMounted.has(productNames[index])
-          ? [new Error(`mcpFromNpm.${productNames[index]} mount failed.`, { cause: result.reason })]
+        !this.productsMounted.has(productNames[index])
+          ? [new Error(
+              `mcpFromNpm.${productNames[index]} is unavailable.`,
+              result.status === "rejected" ? { cause: result.reason } : undefined,
+            )]
           : []
       ));
       if (errors.length) {
         throw new AggregateError(errors, "External MCP products failed to mount.");
       }
     };
+    const healthAuditTimer = setInterval(() => {
+      if (this.healthAuditRunning || this.healthAuditError) return;
+      const audit = this.productsHealthAudit()
+        .catch(error => {
+          this.healthAuditError = error;
+        })
+        .finally(() => {
+          if (this.healthAuditRunning === audit) this.healthAuditRunning = undefined;
+        });
+      this.healthAuditRunning = audit;
+    }, 20_000);
+    healthAuditTimer.unref();
     overview.mcp.honoMount(humanRouteRoot, this.hono);
     overview.toolsSet(async () => {
       await productsReady();
@@ -147,6 +167,27 @@ export default class Mcp<CurrentSchema extends Schema = {}> {
       });
     this.productMounts.set(name, mounting);
     return mounting;
+  }
+
+  private async productsHealthAudit() {
+    const productNames = [...this.productsMounted];
+    const results = await Promise.allSettled(
+      productNames.map(name => this.mcpFromNpm[name].healthAudit()),
+    );
+    const errors: Error[] = [];
+    results.forEach((result, index) => {
+      const name = productNames[index]!;
+      if (result.status === "rejected") {
+        errors.push(new Error(`mcpFromNpm.${name} health audit failed.`, { cause: result.reason }));
+        return;
+      }
+      if (!result.value) return;
+      this.productsMounted.delete(name);
+      this.productMounts.delete(name);
+    });
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "External MCP products health audit failed.");
+    }
   }
 
   private overviewToolsGet(overview: Overview) {

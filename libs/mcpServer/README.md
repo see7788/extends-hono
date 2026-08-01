@@ -30,6 +30,8 @@ libs/mcpServer/
 │           ├── replace(...)                           # 调整指定外部工具的公开契约
 │           ├── add(...)                               # 增加随外部 MCP 一起提供的项目内功能
 │           ├── mount(...)                             # 连接外部 MCP 并挂载附加 Hono 路由
+│           ├── healthAudit()                          # 检查已登记 stdio child 与 transport 状态；调用 close()
+│           ├── close()                                # 精确关闭当前实例持有的 Client 与 Transport
 │           ├── serverMount(...)                       # 把已连接工具注册到 McpServer
 │           └── toolsGet(...)                          # 生成当前外部 MCP 的工具概览数据
 ├── public.ts
@@ -158,5 +160,6 @@ http://127.0.0.1:3005/todo-mcp2/overview?name=browser.list_pages
 - Hono 接口异常会把请求方法、接口路径和完整原始错误追加到 `libs/mcpServer/log.txt`，不把失败响应改写成成功。
 - overview 每次读取当前实例实际注册的工具，晚于构造发生的 `register(...)` 也会进入结果。
 - 多个 AI 可以同时访问同一个 `/todo-mcp`；它们共享该 `Mcp` 实例背后的 browser、io、workspace 等外部产品状态，不提供每个 AI 独立的浏览器或文件系统副本。
-- 当前公开接口没有关闭方法；成功建立的外部 MCP 连接随宿主进程生命周期结束；连接失败时立即关闭对应 Transport，关闭也失败时同时抛出两个错误。
+- 总入口每 20 秒调用各外部产品的 `healthAudit()`；只检查已登记的 stdio child 与 transport，失效后调用同一实例的 `close()` 并移除产品，不扫描进程名、端口或命令行。
+- 成功建立的外部 MCP 连接由 `RegisterFromNpm.close()` 精确关闭；连接失败时立即关闭对应 Transport，关闭也失败时同时抛出两个错误。
 - MCP 客户端通常缓存工具描述和 input schema；服务热更新后需要重新连接 MCP 或创建新会话才能刷新客户端元数据。
