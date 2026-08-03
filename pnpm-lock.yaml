@@ -154,6 +154,12 @@ importers:
       '@modelcontextprotocol/server':
         specifier: ^2.0.0
         version: 2.0.0
+      immer:
+        specifier: 10.2.0
+        version: 10.2.0
+      zustand:
+        specifier: 5.0.13
+        version: 5.0.13(immer@10.2.0)(react@19.2.7)
     devDependencies:
       '@types/node':
         specifier: ^26.0.1
@@ -199,7 +205,7 @@ importers:
         version: file:../extends-ssh(vite@8.1.0(@types/node@26.1.2)(esbuild@0.28.1)(tsx@4.22.4))
       extends-zustand:
         specifier: workspace:*
-        version: link:../../../extends-zustand
+        version: file:../extends-zustand(immer@10.2.0)(zustand@5.0.13(immer@10.2.0)(react@19.2.7))
       hono:
         specifier: ^4.12.33
         version: 4.12.33
@@ -959,6 +965,12 @@ packages:
     resolution: {directory: ../extends-ssh, type: directory}
     peerDependencies:
       vite: ^6.3.6 || ^7.0.0 || ^8.0.0
+
+  extends-zustand@file:../extends-zustand:
+    resolution: {directory: ../extends-zustand, type: directory}
+    peerDependencies:
+      immer: 10.2.0
+      zustand: 5.0.13
 
   fd-slicer2@1.2.0:
     resolution: {integrity: sha512-3lBUNUckhMZduCc4g+Pw4Ve16LD9vpX9b8qUkkKq2mgDRLYWzblszZH2luADnJqjJe+cypngjCuKRm/IW12rRw==}
@@ -2018,6 +2030,11 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
       - use-sync-external-store
+
+  extends-zustand@file:../extends-zustand(immer@10.2.0)(zustand@5.0.13(immer@10.2.0)(react@19.2.7)):
+    dependencies:
+      immer: 10.2.0
+      zustand: 5.0.13(immer@10.2.0)(react@19.2.7)
 
   fd-slicer2@1.2.0:
     dependencies:

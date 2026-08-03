@@ -1,6 +1,6 @@
 # mcp-server
 
-`mcp-server` 把项目内 Hono 动作与外部 npm MCP 产品统一挂载到一个 `/todo-mcp` Streamable HTTP 端点。
+`mcp-server` 把项目内 Hono 动作与外部 npm MCP 产品统一挂载到一个 `/todo-mcp` Streamable HTTP 端点，并通过 `workcopy` 工具安全管理机械盘项目在 `D:\ssdpro` 的 SSD 工作副本与源码回迁。
 
 ## 源码结构
 
@@ -16,8 +16,15 @@ libs/mcpServer/
 │           └── GET /todo-mcp2/overview                     # 人类工具概览入口
 ├── mcp/
 │   ├── ai-call-ai/                                    # 让不同工作区的 Codex 交换联系卡和消息
+│   ├── error.ts                                       # 生产并持久化 MCP 接口错误切片
 │   ├── overview.ts                                    # 提供工具搜索和单项工具契约
-│   └── watcher.ts                                     # 提供 watcher 定义、报告和生命周期接口
+│   ├── watcher.ts                                     # 提供 watcher 定义、报告和生命周期接口
+│   └── workcopy/
+│       ├── index.ts                                   # 提供 SSD 工作副本业务接口
+│       │   ├── workcopy.create.POST                   # 创建并校验工作副本，登记 creating/developing
+│       │   ├── workcopy.status.GET                    # 查询全部账本或单个项目的实时差异与冲突
+│       │   └── workcopy.sync.POST                     # 校验后回迁新增和修改；只删除明确授权路径
+│       └── store.ts                                   # 生产 workcopy 数据与 action 切片
 ├── mcpFromNpm/
 │   ├── browser.ts                                     # 接入浏览器 MCP
 │   ├── codegraph.ts                                   # 接入源码关系 MCP
@@ -40,7 +47,9 @@ libs/mcpServer/
 │       ├── honoMount(...)                             # 挂载 Hono 路由；调用 Hono.route(...)
 │       ├── serverMount(...)                           # 注册 MCP 工具；调用 McpServer.registerTool(...)
 │       └── toolsGet(...)                              # 生成工具概览数据
-├── log.txt                                            # 运行时自动追加 Hono 接口错误
+├── store/
+│   ├── index.ts                                       # 唯一 Zustand 主仓库，组合切片并持久化数据
+│   └── type.ts                                        # 定义完整 Store 数据与 Actions 契约
 ├── package.json
 └── tsconfig.json
 ```
@@ -133,6 +142,9 @@ export default mcp;
 - 人类工具概览：`http://127.0.0.1:3005/todo-mcp2/overview`
 - 项目内 Hono 功能同时生成扁平 MCP tool name：`namespace.path.METHOD`
 - browser、codegraph、docs、io、workspace 保留各自现有 namespace 和原生工具名。
+- `workcopy.create.POST` 只在方先生授权后接收原项目绝对 `sourcePath`，目标固定为 `D:\ssdpro\<项目名>`。
+- `workcopy.status.GET` 的 `sourcePath` 可选；省略时检查全部登记项目，提供时返回单个项目的文件差异与冲突。
+- `workcopy.sync.POST` 接收 `sourcePath` 和可选 `deletePaths`；新增与修改直接回迁，原项目文件默认不删除。
 
 `GET /todo-mcp2/overview` 与 `todo-mcp2.overview.GET` 使用同一个输入契约：
 
@@ -157,7 +169,10 @@ http://127.0.0.1:3005/todo-mcp2/overview?name=browser.list_pages
 - 每个 `Mcp` 实例独立建立外部 MCP 连接并保存工具目录和调用函数，不与其他 `Mcp` 实例串状态。
 - 同一产品的并发首次连接复用同一个 `productMount` Promise，不重复启动外部进程。
 - 任一外部 MCP 启动失败时，`/todo-mcp` 和工具概览直接失败；失败状态会清除，`registerFromNpm(name)` 可显式重试。
-- Hono 接口异常会把请求方法、接口路径和完整原始错误追加到 `libs/mcpServer/log.txt`，不把失败响应改写成成功。
+- Hono 接口异常通过 `mcpErrorActions.errorAdd(...)` 进入唯一主仓库，不把失败响应改写成成功。
+- 主仓库只持久化数据切片并过滤 Actions，文件固定为 `D:\ssdpro\.todo-mcp\store.json`；写入使用 next/backup 交替并在启动时恢复有效副本。
+- workcopy 账本记录原路径、SSD 路径、文件基线、阶段、更新时间和最近错误；`creating`、`developing`、`syncing`、`synced` 可在电脑重启后继续检查。
+- 工作副本排除依赖、构建物、缓存、日志和特殊文件；复制后用 SHA-256 清单验证，双方同时修改同一文件时禁止回迁。
 - overview 每次读取当前实例实际注册的工具，晚于构造发生的 `register(...)` 也会进入结果。
 - 多个 AI 可以同时访问同一个 `/todo-mcp`；它们共享该 `Mcp` 实例背后的 browser、io、workspace 等外部产品状态，不提供每个 AI 独立的浏览器或文件系统副本。
 - 总入口每 20 秒调用各外部产品的 `healthAudit()`；只检查已登记的 stdio child 与 transport，失效后调用同一实例的 `close()` 并移除产品，不扫描进程名、端口或命令行。

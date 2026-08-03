@@ -2,11 +2,11 @@ import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { Hono } from "hono";
 import type { HonoBase } from "hono/hono-base";
 import type { BlankEnv, MergePath, MergeSchemaPath, Schema } from "hono/types";
-import { appendFile } from "node:fs/promises";
 import { inspect } from "node:util";
 import aiCallAi from "./mcp/ai-call-ai";
 import { Overview } from "./mcp/overview";
 import watcher from "./mcp/watcher";
+import workcopy from "./mcp/workcopy";
 import browser from "./mcpFromNpm/browser";
 import codegraph from "./mcpFromNpm/codegraph";
 import docs from "./mcpFromNpm/docs";
@@ -14,10 +14,12 @@ import io from "./mcpFromNpm/io";
 import RegisterFromNpm from "./mcpFromNpm/public";
 import workspace from "./mcpFromNpm/workspace";
 import type Register from "./public";
+import store from "./store";
 
 const mcp = {
   "ai-call-ai": aiCallAi,
   watcher,
+  workcopy,
 };
 const mcpFromNpm = { browser, codegraph, docs, io, workspace };
 const mcpFromNpmCreate = () => ({
@@ -29,7 +31,6 @@ const mcpFromNpmCreate = () => ({
 });
 const frameworkNamespace = "todo-mcp2";
 const humanRouteRoot = "todo-mcp2";
-const errorLog = new URL("./log.txt", import.meta.url);
 type NextSchema<
   CurrentSchema extends Schema,
   Path extends string,
@@ -65,15 +66,16 @@ export default class Mcp<CurrentSchema extends Schema = {}> {
       const requestError = context.error;
       if (!requestError) return;
       try {
-        await appendFile(errorLog, [
-          `[${new Date().toISOString()}] ${context.req.method} ${context.req.path}`,
-          inspect(requestError, { depth: null }),
-          "",
-        ].join("\n"), "utf8");
-      } catch (logError) {
+        store.getState().mcpErrorActions.errorAdd({
+          at: new Date().toISOString(),
+          detail: inspect(requestError, { depth: null }),
+          method: context.req.method,
+          path: context.req.path,
+        });
+      } catch (storeError) {
         throw new AggregateError(
-          [requestError, logError],
-          `Request failed and could not be written to ${errorLog.pathname}.`,
+          [requestError, storeError],
+          "Request failed and could not be persisted to the todo-mcp store.",
         );
       }
     });

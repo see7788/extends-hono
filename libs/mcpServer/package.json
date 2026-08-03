@@ -9,7 +9,9 @@
     "@hono/zod-validator": "^0.9.0",
     "@modelcontextprotocol/client": "^2.0.0",
     "@modelcontextprotocol/core": "^2.0.0",
-    "@modelcontextprotocol/server": "^2.0.0"
+    "@modelcontextprotocol/server": "^2.0.0",
+    "immer": "10.2.0",
+    "zustand": "5.0.13"
   },
   "peerDependencies": {
     "hono": "4.12.30",
