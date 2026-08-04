@@ -1,5 +1,5 @@
 import { FormOutlined } from "@ant-design/icons";
-import { Button, Flex, Space, theme, Tree, Typography, type TreeDataNode } from "antd";
+import { Button, Flex, FloatButton, theme, Tree, Typography, type TreeDataNode } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { statusOptions } from "todo-mcp-node/src/todotree/contract.ts";
@@ -180,9 +180,16 @@ export default function App() {
           </Button>
         ))}
       </Flex>
-      <Space.Compact style={{ bottom: token.margin, position: "fixed", right: token.margin }}>
+      <FloatButton.Group
+        closeIcon={false}
+        description="筛选"
+        icon={false}
+        shape="square"
+        trigger="click"
+      >
         {([{ label: "全部", value: "all" }, ...statusOptions] as const).map(({ label, value }) => (
-          <Button
+          <FloatButton
+            description={label}
             key={value}
             onClick={() => {
               statusFilterSet(value);
@@ -196,11 +203,9 @@ export default function App() {
               borderColor: token.colorSuccess,
               color: token.colorTextLightSolid,
             } : {}}
-          >
-            {label}
-          </Button>
+          />
         ))}
-      </Space.Compact>
+      </FloatButton.Group>
       <Outlet />
     </Flex>
   );
