@@ -1,0 +1,26 @@
+{
+  "name": "todotree",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "antd": "^6.3.7",
+    "extends-antd": "workspace:*",
+    "hono": "4.12.30",
+    "immer": "10.2.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "todo-mcp-node": "workspace:*",
+    "zustand": "5.0.13"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "5.9.3",
+    "vite": "^8.0.11"
+  }
+}

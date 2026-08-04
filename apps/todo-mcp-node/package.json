@@ -1,0 +1,52 @@
+{
+  "name": "todo-mcp-node",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "config": {
+    "honoHost": "127.0.0.1",
+    "honoPort": 3005,
+    "honoOtherPort": 3111
+  },
+  "exports": {
+    "./*.ts": "./*.ts"
+  },
+  "scripts": {
+    "build": "vite build --config vite.config.ts --configLoader runner",
+    "dev": "vite --config vite.config.ts --configLoader runner",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.11",
+    "@hono/zod-validator": "^0.9.0",
+    "@types/validate-npm-package-name": "4.0.2",
+    "esbuild": "^0.28.1",
+    "extends-zustand": "workspace:*",
+    "hono": "4.12.30",
+    "immer": "10.2.0",
+    "mcp-server": "workspace:*",
+    "mcpcreate-lib": "workspace:*",
+    "mustache": "^4.2.0",
+    "prompts": "^2.4.2",
+    "todocli-src-lib": "workspace:*",
+    "tsx": "^4.21.0",
+    "type-fest": "^5.1.0",
+    "validate-npm-package-name": "5.0.1",
+    "vite": "^8.0.11",
+    "vite-config-lib": "workspace:*",
+    "zod": "^4.4.3",
+    "zustand": "5.0.13"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "typescript": "^5.9.3"
+  },
+  "bin": {
+    "todo-mcp": "./bin/todo-mcp.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "dist/"
+  ]
+}

@@ -2,11 +2,9 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import Register from "../public";
 import RegisterFromNpm from "./public";
 
-const browser = new RegisterFromNpm().register({
-  namespace: "browser",
+const browser = new RegisterFromNpm({ namespace: "browser" }).registerPkg({
   transport: () => new StdioClientTransport({
     command: process.platform === "win32" ? "pnpm.cmd" : "pnpm",
     args: [
@@ -141,10 +139,10 @@ const toolContracts = {
 } as const;
 
 for (const [toolName, contract] of Object.entries(toolContracts)) {
-  browser.replace({ toolName, ...contract });
+  browser.mcpReplace({ toolName, ...contract });
 }
 
-const mcp = browser.add(toolCall => new Register().register(
+const mcp = browser.register(toolCall => [
   "/environment/check",
   new Hono().get("/", async context => {
     let result: Awaited<ReturnType<typeof toolCall>>;
@@ -174,6 +172,6 @@ const mcp = browser.add(toolCall => new Register().register(
     idempotentHint: true,
     openWorldHint: false,
   },
-));
+] as const);
 
 export default mcp;

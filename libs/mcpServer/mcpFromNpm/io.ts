@@ -2,8 +2,7 @@ import { fileURLToPath } from "node:url";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import RegisterFromNpm from "./public";
 
-const mcp = new RegisterFromNpm().register({
-  namespace: "io",
+const mcp = new RegisterFromNpm({ namespace: "io" }).registerPkg({
   instructions: "在当前母库及其同级项目的公共根目录内执行文件和目录 IO；所有路径必须位于 io.list_allowed_directories 返回的允许范围内。",
   transport: () => new StdioClientTransport({
     command: process.platform === "win32" ? "npx.cmd" : "npx",
@@ -75,7 +74,7 @@ const toolContracts = {
 } as const;
 
 for (const [toolName, contract] of Object.entries(toolContracts)) {
-  mcp.replace({ toolName, ...contract });
+  mcp.mcpReplace({ toolName, ...contract });
 }
 
 export default mcp;

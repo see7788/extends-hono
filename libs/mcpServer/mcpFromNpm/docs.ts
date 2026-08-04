@@ -1,8 +1,7 @@
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import RegisterFromNpm from "./public";
 
-const mcp = new RegisterFromNpm().register({
-  namespace: "docs",
+const mcp = new RegisterFromNpm({ namespace: "docs" }).registerPkg({
   transport: () => new StreamableHTTPClientTransport(
     new URL("https://mcp.context7.com/mcp"),
   ),
@@ -18,7 +17,7 @@ for (const [toolName, contract] of Object.entries({
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
 })) {
-  mcp.replace({ toolName, ...contract });
+  mcp.mcpReplace({ toolName, ...contract });
 }
 
 export default mcp;

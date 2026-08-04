@@ -412,7 +412,7 @@ const projectSync = async (input: z.infer<typeof syncSchema>) => {
   }
 };
 
-const workcopy = new Register()
+const workcopy = new Register({ namespace: "workcopy" })
   .register(
     "/create",
     new Hono().post("/", zValidator("json", createSchema), async context => (

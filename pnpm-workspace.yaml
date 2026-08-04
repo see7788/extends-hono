@@ -2,5 +2,7 @@ packages:
   - "apps/*"
   - "libs/*"
   - "../extends-zustand"
+  - "../extends-antd"
   - "../extends-ssh"
   - "../remote-runtimeobj/webrtcsignaling"
+  - "../create-todo-cli/mcpCreate"

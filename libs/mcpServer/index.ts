@@ -1,8 +1,9 @@
-import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
+import { createMcpHandler, McpServer, type Tool } from "@modelcontextprotocol/server";
 import { Hono } from "hono";
 import type { HonoBase } from "hono/hono-base";
 import type { BlankEnv, MergePath, MergeSchemaPath, Schema } from "hono/types";
 import { inspect } from "node:util";
+import { z } from "zod";
 import aiCallAi from "./mcp/ai-call-ai";
 import { Overview } from "./mcp/overview";
 import watcher from "./mcp/watcher";
@@ -14,51 +15,47 @@ import io from "./mcpFromNpm/io";
 import RegisterFromNpm from "./mcpFromNpm/public";
 import workspace from "./mcpFromNpm/workspace";
 import type Register from "./public";
+import type { RegistrationData, ToolRegistration } from "./public";
 import store from "./store";
 
-const mcp = {
-  "ai-call-ai": aiCallAi,
-  watcher,
-  workcopy,
-};
-const mcpFromNpm = { browser, codegraph, docs, io, workspace };
-const mcpFromNpmCreate = () => ({
-  browser: new RegisterFromNpm(browser),
-  codegraph: new RegisterFromNpm(codegraph),
-  docs: new RegisterFromNpm(docs),
-  io: new RegisterFromNpm(io),
-  workspace: new RegisterFromNpm(workspace),
-});
-const frameworkNamespace = "todo-mcp2";
-const humanRouteRoot = "todo-mcp2";
+const localRegisters = [aiCallAi, watcher, workcopy] as const;
+const packageRegisters = { browser, codegraph, docs, io, workspace } as const;
+type AnyRegistrationData = RegistrationData<any, any>;
+type AnyPackageRegister = RegisterFromNpm<any, any>;
 type NextSchema<
   CurrentSchema extends Schema,
-  Path extends string,
-  ChildSchema extends Schema,
-> = CurrentSchema | MergeSchemaPath<ChildSchema, MergePath<"/", Path>>;
-type NextFromNpmSchema<
-  CurrentSchema extends Schema,
-  Product,
-> = Product extends RegisterFromNpm<
-  infer Namespace extends string,
-  infer FragmentSchema extends Schema
->
-  ? NextSchema<CurrentSchema, `/${Namespace}`, FragmentSchema>
-  : CurrentSchema;
+  Namespace extends string,
+  FragmentSchema extends Schema,
+> = CurrentSchema | MergeSchemaPath<FragmentSchema, MergePath<"/", `/${Namespace}`>>;
+
+const toolOverviewCreate = (tool: ToolRegistration): Tool => ({
+  name: tool.name,
+  description: tool.config.description,
+  inputSchema: z.toJSONSchema(tool.config.inputSchema, {
+    io: "input",
+    target: "draft-2020-12",
+  }) as Tool["inputSchema"],
+  outputSchema: tool.config.outputSchema
+    ? z.toJSONSchema(tool.config.outputSchema as unknown as z.ZodType, {
+        io: "output",
+        target: "draft-2020-12",
+      }) as Tool["outputSchema"]
+    : undefined,
+  annotations: tool.config.annotations,
+  icons: tool.config.icons,
+  _meta: tool.config._meta,
+});
 
 export default class Mcp<CurrentSchema extends Schema = {}> {
-  private readonly registrations: [string, Register<any>][] = [];
-  private readonly mcpFromNpm = mcpFromNpmCreate();
-  private readonly productMounts = new Map<
-    keyof typeof mcpFromNpm,
-    Promise<void>
-  >();
-  private readonly productsMounted = new Set<keyof typeof mcpFromNpm>();
+  private readonly localDeliveries: AnyRegistrationData[] = [];
+  private readonly packageDeliveries = new Map<AnyPackageRegister, AnyRegistrationData>();
+  private readonly packageDeliveryPromises = new Map<AnyPackageRegister, Promise<void>>();
+  private readonly namespaceOwners = new Map<string, object>();
   private healthAuditError?: unknown;
   private healthAuditRunning?: Promise<void>;
   readonly hono: HonoBase<BlankEnv, CurrentSchema, "/", "/">;
 
-  constructor(...args: ConstructorParameters<typeof McpServer>) {
+  constructor() {
     const overview = new Overview();
     this.hono = new Hono() as HonoBase<BlankEnv, CurrentSchema, "/", "/">;
     this.hono.use("*", async (context, next) => {
@@ -79,33 +76,36 @@ export default class Mcp<CurrentSchema extends Schema = {}> {
         );
       }
     });
-    for (const [namespace, integration] of Object.entries(mcp)) {
-      integration.honoMount(namespace, this.hono);
-    }
-    const productNames = Object.keys(mcpFromNpm) as (keyof typeof mcpFromNpm)[];
-    const productResults = Promise.allSettled(
-      productNames.map(name => this.productMount(name)),
+    for (const register of localRegisters) this.localDeliveryAdd(register.deliver(), register);
+    this.localDeliveryAdd(overview.mcp.deliver(), overview.mcp);
+
+    const packageEntries = Object.entries(packageRegisters) as [
+      keyof typeof packageRegisters,
+      AnyPackageRegister,
+    ][];
+    const packageResults = Promise.allSettled(
+      packageEntries.map(([, register]) => this.packageDeliver(register)),
     );
-    const productsReady = async () => {
+    const packagesReady = async () => {
       if (this.healthAuditError) {
         throw new Error("External MCP health audit failed.", { cause: this.healthAuditError });
       }
-      const results = await productResults;
-      const errors = results.flatMap((result, index) => (
-        !this.productsMounted.has(productNames[index])
-          ? [new Error(
-              `mcpFromNpm.${productNames[index]} is unavailable.`,
+      const results = await packageResults;
+      const errors = results.flatMap((result, index) => {
+        const [name, register] = packageEntries[index]!;
+        return this.packageDeliveries.has(register)
+          ? []
+          : [new Error(
+              `mcpFromNpm.${name} is unavailable.`,
               result.status === "rejected" ? { cause: result.reason } : undefined,
-            )]
-          : []
-      ));
-      if (errors.length) {
-        throw new AggregateError(errors, "External MCP products failed to mount.");
-      }
+            )];
+      });
+      if (errors.length) throw new AggregateError(errors, "External MCP products failed to deliver.");
     };
+
     const healthAuditTimer = setInterval(() => {
       if (this.healthAuditRunning || this.healthAuditError) return;
-      const audit = this.productsHealthAudit()
+      const audit = this.packagesHealthAudit()
         .catch(error => {
           this.healthAuditError = error;
         })
@@ -115,104 +115,93 @@ export default class Mcp<CurrentSchema extends Schema = {}> {
       this.healthAuditRunning = audit;
     }, 20_000);
     healthAuditTimer.unref();
-    overview.mcp.honoMount(humanRouteRoot, this.hono);
+
     overview.toolsSet(async () => {
-      await productsReady();
-      return this.overviewToolsGet(overview);
+      await packagesReady();
+      return this.toolsGet().map(toolOverviewCreate);
     });
     const handler = createMcpHandler(() => {
-      const server = new McpServer(...args);
-      for (const [namespace, integration] of Object.entries(mcp)) {
-        integration.serverMount(namespace, server);
+      const server = new McpServer({ name: "todo-mcp", version: "0.1.0" });
+      for (const tool of this.toolsGet()) {
+        server.registerTool(tool.name, tool.config, tool.handler);
       }
-      for (const [namespace, integration] of this.registrations) {
-        integration.serverMount(namespace, server);
-      }
-      for (const name of this.productsMounted) {
-        this.mcpFromNpm[name].serverMount(server);
-      }
-      overview.mcp.serverMount(frameworkNamespace, server);
       return server;
     });
-    this.hono.all("/todo-mcp", async (ctx) => {
-      await productsReady();
-      return handler.fetch(ctx.req.raw);
+    this.hono.all("/todo-mcp", async context => {
+      await packagesReady();
+      return handler.fetch(context.req.raw);
     });
   }
 
-  register<
-    const Namespace extends string,
-    FragmentSchema extends Schema,
-  >(
-    namespace: Namespace,
-    mcp: Register<FragmentSchema>,
-  ): Mcp<NextSchema<CurrentSchema, `/${Namespace}`, FragmentSchema>> {
-    mcp.honoMount(namespace, this.hono);
-    this.registrations.push([namespace, mcp]);
-    return this as Mcp<NextSchema<CurrentSchema, `/${Namespace}`, FragmentSchema>>;
+  register<Namespace extends string, FragmentSchema extends Schema>(
+    register: Register<Namespace, FragmentSchema>,
+  ): Mcp<NextSchema<CurrentSchema, Namespace, FragmentSchema>> {
+    this.localDeliveryAdd(register.deliver(), register);
+    return this as Mcp<NextSchema<CurrentSchema, Namespace, FragmentSchema>>;
   }
 
-  private productMount(name: keyof typeof mcpFromNpm) {
-    const mounted = this.productMounts.get(name);
-    if (mounted) return mounted;
-    const mounting = this.mcpFromNpm[name]
-      .mount(this.hono)
-      .then(() => {
-        this.productsMounted.add(name);
+  async registerPkg<Namespace extends string, FragmentSchema extends Schema>(
+    register: RegisterFromNpm<Namespace, FragmentSchema>,
+  ): Promise<Mcp<NextSchema<CurrentSchema, Namespace, FragmentSchema>>> {
+    await this.packageDeliver(register as AnyPackageRegister);
+    return this as Mcp<NextSchema<CurrentSchema, Namespace, FragmentSchema>>;
+  }
+
+  private localDeliveryAdd(delivery: AnyRegistrationData, owner: object) {
+    this.namespaceAdd(delivery.namespace, owner);
+    this.hono.route("/", delivery.hono);
+    this.localDeliveries.push(delivery);
+  }
+
+  private packageDeliver(register: AnyPackageRegister) {
+    const delivered = this.packageDeliveryPromises.get(register);
+    if (delivered) return delivered;
+    const delivering = register.deliver()
+      .then(delivery => {
+        this.namespaceAdd(delivery.namespace, register);
+        this.hono.route("/", delivery.hono);
+        this.packageDeliveries.set(register, delivery);
       })
       .catch(error => {
-        this.productsMounted.delete(name);
-        if (this.productMounts.get(name) === mounting) {
-          this.productMounts.delete(name);
+        this.packageDeliveries.delete(register);
+        if (this.packageDeliveryPromises.get(register) === delivering) {
+          this.packageDeliveryPromises.delete(register);
         }
         throw error;
       });
-    this.productMounts.set(name, mounting);
-    return mounting;
+    this.packageDeliveryPromises.set(register, delivering);
+    return delivering;
   }
 
-  private async productsHealthAudit() {
-    const productNames = [...this.productsMounted];
-    const results = await Promise.allSettled(
-      productNames.map(name => this.mcpFromNpm[name].healthAudit()),
-    );
+  private namespaceAdd(namespace: string, owner: object) {
+    const currentOwner = this.namespaceOwners.get(namespace);
+    if (currentOwner && currentOwner !== owner) {
+      throw new Error(`Duplicate MCP namespace: ${namespace}`);
+    }
+    this.namespaceOwners.set(namespace, owner);
+  }
+
+  private async packagesHealthAudit() {
+    const registers = [...this.packageDeliveries.keys()];
+    const results = await Promise.allSettled(registers.map(register => register.healthAudit()));
     const errors: Error[] = [];
     results.forEach((result, index) => {
-      const name = productNames[index]!;
+      const register = registers[index]!;
       if (result.status === "rejected") {
-        errors.push(new Error(`mcpFromNpm.${name} health audit failed.`, { cause: result.reason }));
+        errors.push(new Error("External MCP health audit failed.", { cause: result.reason }));
         return;
       }
       if (!result.value) return;
-      this.productsMounted.delete(name);
-      this.productMounts.delete(name);
+      this.packageDeliveries.delete(register);
+      this.packageDeliveryPromises.delete(register);
     });
-    if (errors.length > 0) {
-      throw new AggregateError(errors, "External MCP products health audit failed.");
-    }
+    if (errors.length) throw new AggregateError(errors, "External MCP health audits failed.");
   }
 
-  private overviewToolsGet(overview: Overview) {
-    const tools: ReturnType<Register["toolsGet"]> = [];
-    for (const [namespace, integration] of Object.entries(mcp)) {
-      tools.push(...integration.toolsGet(namespace));
-    }
-    for (const [namespace, integration] of this.registrations) {
-      tools.push(...integration.toolsGet(namespace));
-    }
-    for (const name of this.productsMounted) {
-      tools.push(...this.mcpFromNpm[name].toolsGet());
-    }
-    tools.push(...overview.mcp.toolsGet(frameworkNamespace));
-    return tools;
-  }
-
-  async registerFromNpm<const Name extends keyof typeof mcpFromNpm>(
-    name: Name,
-  ): Promise<Mcp<NextFromNpmSchema<CurrentSchema, (typeof mcpFromNpm)[Name]>>> {
-    await this.productMount(name);
-    return this as Mcp<
-      NextFromNpmSchema<CurrentSchema, (typeof mcpFromNpm)[Name]>
-    >;
+  private toolsGet() {
+    return [
+      ...this.localDeliveries.flatMap(delivery => delivery.tools),
+      ...[...this.packageDeliveries.values()].flatMap(delivery => delivery.tools),
+    ];
   }
 }

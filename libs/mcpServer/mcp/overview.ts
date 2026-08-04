@@ -21,7 +21,7 @@ const inputSchema = z.object({
 export class Overview {
   private toolsGet = () => Promise.resolve<Tool[]>([]);
 
-  readonly mcp = new Register().register(
+  readonly mcp = new Register({ namespace: "todo-mcp2" }).register(
     "/overview",
     new Hono().get("/", async context => {
       const tools = await this.toolsGet();

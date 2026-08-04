@@ -7,7 +7,7 @@ import workspaceAiContact, {
 } from "mcp-server/mcp/ai-call-ai/WORKSPACE_AI_CONTACT.ts";
 import Register from "mcp-server/public.ts";
 
-export default new Register().register(
+export default new Register({ namespace: "ai-call-ai" }).register(
   "/WORKSPACE_AI_CONTACT",
   new Hono().get("/", zValidator("query", cardSchema), async context => {
     const input = context.req.valid("query");

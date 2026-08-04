@@ -1,8 +1,7 @@
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import RegisterFromNpm from "./public";
 
-const mcp = new RegisterFromNpm().register({
-  namespace: "workspace",
+const mcp = new RegisterFromNpm({ namespace: "workspace" }).registerPkg({
   transport: () => new StdioClientTransport({
     command: process.platform === "win32" ? "npx.cmd" : "npx",
     args: ["-y", "@wonderwhy-er/desktop-commander@0.2.46"],
@@ -117,7 +116,7 @@ const toolContracts = {
 } as const;
 
 for (const [toolName, contract] of Object.entries(toolContracts)) {
-  mcp.replace({ toolName, ...contract });
+  mcp.mcpReplace({ toolName, ...contract });
 }
 
 export default mcp;

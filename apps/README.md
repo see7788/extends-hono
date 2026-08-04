@@ -1,6 +1,6 @@
 # apps
 
-`apps` 放置可以独立启动和直接交付给使用者的成品，不以是否被其他源码调用判断价值。目前保留两个远程控制产品；`todo-mcp` 计划迁入这里，作为统一 MCP、Hono、主仓库和 TodoTree 的独立入口。现有项目可分别使用 `pnpm --filter remotedemo dev` 和 `pnpm --filter remotedemo2 dev` 启动。
+`apps` 放置可以独立启动和直接交付给使用者的成品，不以是否被其他源码调用判断价值。目前包含两个远程控制产品和新的 TodoTree MCP 服务；新服务完成运行验收前不替换旧 honoapp 进程。
 
 ## 项目结构
 
@@ -26,8 +26,12 @@ apps/
 │   └── package.json
 │       ├── pnpm dev                         # 构建注入脚本并监听服务源码
 │       └── pnpm start                       # 构建后启动 127.0.0.1:32223
-└── todo-mcp/                                # 计划迁入，当前尚未创建
-    └── 目标                                 # 替代 honoapp 的 todo-mcp 启动职责
+└── todo-mcp-node/
+    ├── src/                                 # TodoTree 仓库、Hono、MCP、Codex 联系与 SSE
+    ├── vite.config.ts                       # 同时构建 Node 服务与 todotree
+    └── package.json
+        ├── pnpm dev                         # 使用 3005/3111 启动统一开发服务
+        └── pnpm build                       # 构建 React 与 Node 两份产物
 ```
 
 ## 核心使用方法
@@ -48,6 +52,10 @@ pnpm --filter remotedemo2 dev
 
 服务在 `http://127.0.0.1:32223` 提供控制页面，在 `http://127.0.0.1:32223/remote.js` 提供被协助页面脚本。脚本启动当前标签页共享后生成控制地址，协助者打开该地址查看画面并执行鼠标、键盘和文本操作。
 
-### todo-mcp 迁移目标
+### TodoTree MCP
 
-`todo-mcp` 将从 `libs/mcpServer` 迁入 `apps/todo-mcp`，直接运行未编译 TypeScript 源码并替代 honoapp 入口；唯一主仓库数据写入 `D:\ssdpro\todo-mcp-store`。迁移完成并通过真实运行验收前，现有入口和源码仍是当前事实，不提前删除。
+```powershell
+pnpm --filter todo-mcp-node dev
+```
+
+服务计划在 `http://127.0.0.1:3005/todo-mcp` 提供唯一 MCP，在 `/todotree/` 提供 TodoTree 页面；唯一服务端仓库通过 `extends-zustand/cwdPersist` 写入 `D:\ssdpro\.zustand\todo-mcp-store.json`。新入口已经消费原 honoapp 模板能力与 create-todo-cli，完成运行验收前仍不切换 3005 进程。

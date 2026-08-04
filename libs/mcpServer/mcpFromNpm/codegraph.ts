@@ -1,7 +1,6 @@
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { Hono } from "hono";
 import { z } from "zod";
-import Register from "../public";
 import RegisterFromNpm from "./public";
 
 const scopeMaintenance = {
@@ -43,14 +42,13 @@ const scopeMaintenance = {
   ],
 };
 
-const mcp = new RegisterFromNpm().register({
-  namespace: "codegraph",
+const mcp = new RegisterFromNpm({ namespace: "codegraph" }).registerPkg({
   instructions: "CodeGraph 使用全局唯一共享索引；每个 AI 维护 workspaceRoot/.gitignore 时，只能按自身当前真实分析需求最小化追加完成本次分析所需的精确目录，禁止加入项目类别、父目录或全仓通配范围，并且使用完成后不得主动收紧已有规则。",
   transport: () => new StdioClientTransport({
     command: process.platform === "win32" ? "pnpm.cmd" : "pnpm",
     args: ["dlx", "@colbymchenry/codegraph@1.5.0", "serve", "--mcp"],
   }),
-}).replace({
+}).mcpReplace({
   toolName: "codegraph_explore",
   name: "explore",
   description: [
@@ -67,7 +65,7 @@ const mcp = new RegisterFromNpm().register({
     idempotentHint: true,
     openWorldHint: false,
   },
-}).add(new Register().register(
+}).register([
   "/scope_maintenance",
   new Hono().get("/", context => context.text(
     JSON.stringify(scopeMaintenance, undefined, 2),
@@ -84,6 +82,6 @@ const mcp = new RegisterFromNpm().register({
     idempotentHint: true,
     openWorldHint: false,
   },
-));
+] as const);
 
 export default mcp;

@@ -25,7 +25,7 @@ const definitionSchema = z.object({
   workspacePath: workspacePathSchema,
 });
 
-export default new Register().register(
+export default new Register({ namespace: "watcher" }).register(
   "/definition",
   new Hono().get("/", zValidator("query", definitionSchema), context => {
     const input = context.req.valid("query");

@@ -1,0 +1,31 @@
+:root {
+  color: #1f1f1f;
+  background: #f5f7fa;
+  font-family: "Microsoft YaHei", sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  max-width: 1180px;
+  margin: auto;
+  padding: 24px;
+}
+
+.workspace-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.workspace-add {
+  margin-bottom: 20px;
+}
+
+.drawer-form {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 24px;
+}

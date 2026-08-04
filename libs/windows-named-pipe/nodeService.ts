@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { createConnection } from "node:net";
-import immerStateCreator from "extends-zustand/immerStateCreator";
+import type { ImmerStateCreator } from "extends-zustand/immerStateCreator";
 import { z } from "zod";
 
 const pipeRoot = "\\\\.\\pipe\\";
@@ -113,7 +113,9 @@ const stoppedStateRead = (service: NodeServiceRegistration): NodeServiceState =>
   status: "stopped",
 });
 
-export default immerStateCreator<NodeServiceStore>((set, get) => {
+const store = <T extends object = {}>(
+  ...[set, get]: Parameters<ImmerStateCreator<NodeServiceStore, T>>
+): NodeServiceStore => {
   const stateRead = async () => {
     if (process.platform !== "win32") {
       throw new Error("Node service dashboard requires Windows Named Pipe");
@@ -166,11 +168,7 @@ export default immerStateCreator<NodeServiceStore>((set, get) => {
         const current = await controlRequest(service.control, "status", 1000);
         if (!current) return stateRead();
         await controlRequest(service.control, "stop", 15000);
-        for (let index = 0; index < 100; index += 1) {
-          if (!await controlRequest(service.control, "status", 1000)) return stateRead();
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
-        throw new Error(`Node service did not stop: ${service.command}`);
+        return stateRead();
       },
       restart: async id => {
         const service = get().nodeService[id];
@@ -180,4 +178,6 @@ export default immerStateCreator<NodeServiceStore>((set, get) => {
       },
     },
   };
-});
+};
+
+export default store;

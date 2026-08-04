@@ -1,23 +1,22 @@
 import { Client, type CallToolResult, type Tool, type Transport } from "@modelcontextprotocol/client";
 import { CallToolResultSchema } from "@modelcontextprotocol/core";
-import type { McpServer } from "@modelcontextprotocol/server";
+import { Hono, type Env } from "hono";
 import type { HonoBase } from "hono/hono-base";
-import type { BlankEnv, MergePath, MergeSchemaPath, Schema } from "hono/types";
+import type { MergePath, MergeSchemaPath, Schema } from "hono/types";
 import { z } from "zod";
-import type Register from "../public";
+import Register, {
+  type Definition,
+  type HonoDefinition,
+  type RegistrationData,
+  type ToolContractAnnotations,
+  type ToolRegistration,
+} from "../public";
 
-type Definition = {
+type PackageDefinition = {
   instructions?: string;
-  namespace: string;
   transport: () => Transport | Promise<Transport>;
 };
-type ToolContractAnnotations = Omit<
-  NonNullable<Tool["annotations"]>,
-  "title"
-> & Required<Pick<
-  NonNullable<Tool["annotations"]>,
-  "readOnlyHint" | "destructiveHint" | "idempotentHint" | "openWorldHint"
->>;
+
 type Replacement = Partial<Pick<
   Tool,
   "name" | "description" | "inputSchema" | "outputSchema" | "_meta"
@@ -25,11 +24,16 @@ type Replacement = Partial<Pick<
   annotations?: ToolContractAnnotations;
   toolName: string;
 };
+
 type ToolCall = (
   name: string,
   arguments_: Record<string, unknown>,
 ) => Promise<CallToolResult>;
-type Addition = Register<any> | ((toolCall: ToolCall) => Register<any>);
+
+type Addition =
+  | Definition<any, any, any>
+  | ((toolCall: ToolCall) => Definition<any, any, any>);
+
 type Runtime = {
   childPid?: number;
   client: Client;
@@ -44,140 +48,127 @@ const childPidRead = (transport: Transport) => {
   return typeof pid === "number" && Number.isInteger(pid) && pid > 0 ? pid : undefined;
 };
 
-export default class RegisterFromNpm<
-  Namespace extends string = string,
-  CurrentSchema extends Schema = {},
-> {
-  private definition?: Definition;
-  private replacements: Replacement[] = [];
-  private additions: Addition[] = [];
-  private tools?: [string, Tool][];
-  private toolCall?: ToolCall;
-  private mcp: Register<any>[] = [];
-  private runtime?: Runtime;
-
-  constructor(source?: RegisterFromNpm<Namespace, CurrentSchema>) {
-    if (!source) return;
-    this.definition = source.definition;
-    this.replacements = [...source.replacements];
-    this.additions = [...source.additions];
-  }
-
-  register<const NextNamespace extends string>(
-    definition: Definition & { namespace: NextNamespace },
+const annotationsGet = (tool: Tool, replacement?: Replacement) => {
+  const { title: _title, ...sourceAnnotations } = tool.annotations ?? {};
+  const annotations = {
+    ...sourceAnnotations,
+    ...replacement?.annotations,
+  };
+  if (
+    typeof annotations.readOnlyHint !== "boolean"
+    || typeof annotations.destructiveHint !== "boolean"
+    || typeof annotations.idempotentHint !== "boolean"
+    || typeof annotations.openWorldHint !== "boolean"
   ) {
-    if (definition.instructions !== undefined && !definition.instructions.trim()) {
-      throw new Error(`Namespace "${definition.namespace}" has empty instructions.`);
-    }
-    this.definition = definition;
-    return this as unknown as RegisterFromNpm<NextNamespace, CurrentSchema>;
+    throw new Error(`Tool "${tool.name}" has incomplete annotations.`);
+  }
+  return annotations as ToolContractAnnotations;
+};
+
+export default class RegisterFromNpm<
+  Namespace extends string,
+  AddedSchema extends Schema = {},
+> {
+  private readonly namespace: Namespace;
+  private packageDefinition?: PackageDefinition;
+  private replacements: Replacement[] = [];
+  private deletions: string[] = [];
+  private additions: Addition[] = [];
+  private honoDefinitions: HonoDefinition<any, any>[] = [];
+  private delivery?: Promise<RegistrationData<Namespace, AddedSchema>>;
+  private runtime?: Runtime;
+  private toolCall?: ToolCall;
+
+  constructor(options: { namespace: Namespace }) {
+    this.namespace = options.namespace;
   }
 
-  replace(replacement: Replacement) {
+  registerPkg(options: PackageDefinition) {
+    if (this.packageDefinition) {
+      throw new Error(`External MCP "${this.namespace}" already has a package source.`);
+    }
+    if (options.instructions !== undefined && !options.instructions.trim()) {
+      throw new Error(`Namespace "${this.namespace}" has empty instructions.`);
+    }
+    this.packageDefinition = options;
+    return this;
+  }
+
+  mcpDel(toolName: string) {
+    if (!toolName.trim()) throw new Error("Deleted MCP tool name cannot be empty.");
+    this.deletions.push(toolName);
+    return this;
+  }
+
+  mcpReplace(replacement: Replacement) {
+    if (!replacement.toolName.trim()) throw new Error("Replaced MCP tool name cannot be empty.");
     this.replacements.push(replacement);
     return this;
   }
 
-  add<FragmentSchema extends Schema>(
-    addition: Register<FragmentSchema> | ((toolCall: ToolCall) => Register<FragmentSchema>),
+  register<
+    const Path extends `/${string}`,
+    HonoEnv extends Env,
+    ChildSchema extends Schema,
+    HonoBasePath extends string,
+    HonoCurrentPath extends string,
+    InputSchema extends z.ZodObject<z.ZodRawShape>,
+  >(
+    definition: Definition<
+      Path,
+      HonoBase<HonoEnv, ChildSchema, HonoBasePath, HonoCurrentPath>,
+      InputSchema
+    > | ((toolCall: ToolCall) => Definition<
+      Path,
+      HonoBase<HonoEnv, ChildSchema, HonoBasePath, HonoCurrentPath>,
+      InputSchema
+    >),
   ) {
-    this.additions.push(addition);
+    this.additions.push(definition);
     return this as unknown as RegisterFromNpm<
       Namespace,
-      CurrentSchema | FragmentSchema
+      AddedSchema | MergeSchemaPath<ChildSchema, MergePath<"/", Path>>
     >;
   }
 
-  async mount<ParentSchema extends Schema>(
-    hono: HonoBase<BlankEnv, ParentSchema, "/", "/">,
+  honoAdd<
+    const Path extends `/${string}`,
+    HonoEnv extends Env,
+    ChildSchema extends Schema,
+    HonoBasePath extends string,
+    HonoCurrentPath extends string,
+  >(
+    path: Path,
+    hono: HonoBase<HonoEnv, ChildSchema, HonoBasePath, HonoCurrentPath>,
   ) {
-    if (!this.definition) throw new Error("The npm MCP product has not been registered.");
-    if (this.runtime) throw new Error(`External MCP "${this.definition.namespace}" is already mounted.`);
-    const { namespace } = this.definition;
-    const transport = await this.definition.transport();
-    const client = new Client({ name: `${namespace}-proxy`, version: "0.0.0" });
-    try {
-      await client.connect(transport);
-      const toolCall: ToolCall = async (
-        toolName: string,
-        arguments_: Record<string, unknown>,
-      ) => CallToolResultSchema.parse(
-        await client.callTool({ name: toolName, arguments: arguments_ }),
-      );
-      const sourceTools = (await client.listTools()).tools;
-      for (const replacement of this.replacements) {
-        if (!sourceTools.some(tool => tool.name === replacement.toolName)) {
-          throw new Error(`Cannot replace missing tool "${replacement.toolName}" from ${namespace}.`);
-        }
-      }
-      const tools: [string, Tool][] = sourceTools.map(tool => {
-        const replacement = this.replacements.find(item => item.toolName === tool.name);
-        const { title: _annotationTitle, ...toolAnnotations } = tool.annotations ?? {};
-        const externalTool: Tool = {
-          ...tool,
-          ...replacement,
-          annotations: {
-            ...toolAnnotations,
-            ...replacement?.annotations,
-          },
-        };
-        if (!externalTool.description?.trim()) {
-          throw new Error(`Tool "${externalTool.name}" from ${namespace} has no consumption description.`);
-        }
-        const annotations = externalTool.annotations;
-        if (
-          !annotations
-          || typeof annotations.readOnlyHint !== "boolean"
-          || typeof annotations.destructiveHint !== "boolean"
-          || typeof annotations.idempotentHint !== "boolean"
-          || typeof annotations.openWorldHint !== "boolean"
-        ) {
-          throw new Error(`Tool "${externalTool.name}" from ${namespace} has incomplete annotations.`);
-        }
-        return [tool.name, externalTool];
-      });
-      const mcp = this.additions.map(addition => (
-        typeof addition === "function" ? addition(toolCall) : addition
-      ));
-      for (const integration of mcp) {
-        integration.honoMount(namespace, hono);
-      }
-      const runtime: Runtime = {
-        childPid: childPidRead(transport),
-        client,
-        transport,
-        transportClosed: false,
-      };
-      client.onclose = () => {
-        runtime.transportClosed = true;
-      };
-      this.toolCall = toolCall;
-      this.tools = tools;
-      this.mcp = mcp;
-      this.runtime = runtime;
-    } catch (mountError) {
-      try {
-        await transport.close();
-      } catch (closeError) {
-        throw new AggregateError(
-          [mountError, closeError],
-          `Failed to mount and close external MCP "${namespace}".`,
-        );
-      }
-      throw mountError;
-    }
-    return hono as HonoBase<
-      BlankEnv,
-      ParentSchema | MergeSchemaPath<CurrentSchema, MergePath<"/", `/${Namespace}`>>,
-      "/",
-      "/"
+    this.honoDefinitions.push([path, hono]);
+    return this as unknown as RegisterFromNpm<
+      Namespace,
+      AddedSchema | MergeSchemaPath<ChildSchema, MergePath<"/", Path>>
     >;
+  }
+
+  get hono() {
+    return this.deliver().then(delivery => delivery.hono);
+  }
+
+  deliver(): Promise<RegistrationData<Namespace, AddedSchema>> {
+    if (this.delivery) return this.delivery;
+    const delivery = this.deliveryCreate().catch(error => {
+      if (this.delivery === delivery) this.delivery = undefined;
+      throw error;
+    });
+    this.delivery = delivery;
+    return delivery;
   }
 
   async healthAudit() {
     const runtime = this.runtime;
-    if (!runtime?.childPid) return false;
-    if (!runtime.transportClosed && childPidRead(runtime.transport)) return false;
+    if (!runtime) return false;
+    if (
+      !runtime.transportClosed
+      && (!runtime.childPid || childPidRead(runtime.transport))
+    ) return false;
     await this.close();
     return true;
   }
@@ -189,53 +180,145 @@ export default class RegisterFromNpm<
     await runtime.closing;
     if (this.runtime !== runtime) return;
     this.runtime = undefined;
+    this.delivery = undefined;
     this.toolCall = undefined;
-    this.tools = undefined;
-    this.mcp = [];
   }
 
-  serverMount(server: McpServer) {
-    if (!this.definition || !this.tools || !this.toolCall) {
-      throw new Error("The npm MCP product has not been mounted.");
+  private async deliveryCreate(): Promise<RegistrationData<Namespace, AddedSchema>> {
+    const packageDefinition = this.packageDefinition;
+    if (!packageDefinition) {
+      throw new Error(`External MCP "${this.namespace}" has no package source.`);
     }
-    const { namespace } = this.definition;
-    const namespaceInstructions = this.definition.instructions?.trim();
-    for (const [toolName, externalTool] of this.tools) {
-      server.registerTool(`${namespace}.${externalTool.name}`, {
-        description: namespaceInstructions
-          ? `${namespaceInstructions} ${externalTool.description}`
-          : externalTool.description,
-        inputSchema: z.fromJSONSchema(externalTool.inputSchema as Parameters<typeof z.fromJSONSchema>[0]),
-        outputSchema: externalTool.outputSchema ? z.fromJSONSchema(externalTool.outputSchema as Parameters<typeof z.fromJSONSchema>[0]) : undefined,
-        annotations: externalTool.annotations,
+    if (this.runtime) throw new Error(`External MCP "${this.namespace}" is already delivered.`);
+    const transport = await packageDefinition.transport();
+    const client = new Client({ name: `${this.namespace}-proxy`, version: "0.0.0" });
+    try {
+      await client.connect(transport);
+      const currentToolCall: ToolCall = async (name, arguments_) => CallToolResultSchema.parse(
+        await client.callTool({ name, arguments: arguments_ }),
+      );
+      const toolCall: ToolCall = (name, arguments_) => {
+        if (!this.toolCall) {
+          throw new Error(`External MCP "${this.namespace}" is not connected.`);
+        }
+        return this.toolCall(name, arguments_);
+      };
+      const sourceTools = (await client.listTools()).tools;
+      this.contractChangesValidate(sourceTools);
+      const instructions = packageDefinition.instructions?.trim();
+      const tools = sourceTools
+        .filter(tool => !this.deletions.includes(tool.name))
+        .map(tool => this.toolRegistrationCreate({
+          instructions,
+          tool,
+          toolCall: currentToolCall,
+        }));
+
+      let local = new Register({ namespace: this.namespace }) as Register<Namespace, any>;
+      for (const addition of this.additions) {
+        const definition = typeof addition === "function" ? addition(toolCall) : addition;
+        local = local.register(...definition) as Register<Namespace, any>;
+      }
+      for (const [path, hono] of this.honoDefinitions) {
+        local = local.honoAdd(path, hono) as Register<Namespace, any>;
+      }
+      let delivery: RegistrationData<Namespace, AddedSchema>;
+      if (this.additions.length || this.honoDefinitions.length) {
+        const localDelivery = local.deliver();
+        delivery = {
+          namespace: this.namespace,
+          hono: localDelivery.hono as RegistrationData<Namespace, AddedSchema>["hono"],
+          tools: [...tools, ...localDelivery.tools],
+        };
+      } else {
+        const emptyHono = new Hono().route(`/${this.namespace}`, new Hono());
+        delivery = {
+          namespace: this.namespace,
+          hono: emptyHono as RegistrationData<Namespace, AddedSchema>["hono"],
+          tools,
+        };
+      }
+      const names = new Set<string>();
+      for (const tool of delivery.tools) {
+        if (names.has(tool.name)) throw new Error(`Duplicate MCP tool: ${tool.name}`);
+        names.add(tool.name);
+      }
+      const runtime: Runtime = {
+        childPid: childPidRead(transport),
+        client,
+        transport,
+        transportClosed: false,
+      };
+      client.onclose = () => {
+        runtime.transportClosed = true;
+      };
+      this.toolCall = currentToolCall;
+      this.runtime = runtime;
+      return delivery;
+    } catch (deliveryError) {
+      try {
+        await transport.close();
+      } catch (closeError) {
+        throw new AggregateError(
+          [deliveryError, closeError],
+          `Failed to deliver and close external MCP "${this.namespace}".`,
+        );
+      }
+      throw deliveryError;
+    }
+  }
+
+  private contractChangesValidate(sourceTools: readonly Tool[]) {
+    const sourceNames = new Set(sourceTools.map(tool => tool.name));
+    const changes = [...this.deletions, ...this.replacements.map(item => item.toolName)];
+    for (const toolName of changes) {
+      if (!sourceNames.has(toolName)) {
+        throw new Error(`Cannot change missing tool "${toolName}" from ${this.namespace}.`);
+      }
+    }
+    const duplicateDeletion = this.deletions.find((name, index) => this.deletions.indexOf(name) !== index);
+    if (duplicateDeletion) throw new Error(`Duplicate MCP deletion: ${duplicateDeletion}`);
+    const duplicateReplacement = this.replacements.find((item, index) => (
+      this.replacements.findIndex(candidate => candidate.toolName === item.toolName) !== index
+    ));
+    if (duplicateReplacement) {
+      throw new Error(`Duplicate MCP replacement: ${duplicateReplacement.toolName}`);
+    }
+    const conflict = this.deletions.find(name => this.replacements.some(item => item.toolName === name));
+    if (conflict) throw new Error(`MCP tool cannot be deleted and replaced: ${conflict}`);
+  }
+
+  private toolRegistrationCreate(options: {
+    instructions?: string;
+    tool: Tool;
+    toolCall: ToolCall;
+  }): ToolRegistration {
+    const replacement = this.replacements.find(item => item.toolName === options.tool.name);
+    const externalTool: Tool = { ...options.tool, ...replacement };
+    const description = externalTool.description?.trim();
+    if (!description) {
+      throw new Error(`Tool "${externalTool.name}" from ${this.namespace} has no consumption description.`);
+    }
+    const annotations = annotationsGet(options.tool, replacement);
+    return {
+      name: `${this.namespace}.${externalTool.name}`,
+      config: {
+        description: options.instructions ? `${options.instructions} ${description}` : description,
+        inputSchema: z.fromJSONSchema(
+          externalTool.inputSchema as Parameters<typeof z.fromJSONSchema>[0],
+        ) as z.ZodObject<z.ZodRawShape>,
+        outputSchema: externalTool.outputSchema
+          ? z.fromJSONSchema(
+              externalTool.outputSchema as Parameters<typeof z.fromJSONSchema>[0],
+            )
+          : undefined,
+        annotations,
         _meta: externalTool._meta,
-      }, async arguments_ => this.toolCall!(toolName, arguments_ as Record<string, unknown>));
-    }
-    for (const mcp of this.mcp) {
-      mcp.serverMount(namespace, server, namespaceInstructions);
-    }
+      },
+      handler: async arguments_ => options.toolCall(
+        options.tool.name,
+        arguments_ as Record<string, unknown>,
+      ),
+    };
   }
-
-  toolsGet(): Tool[] {
-    if (!this.definition || !this.tools) {
-      throw new Error("The npm MCP product has not been mounted.");
-    }
-    const { namespace } = this.definition;
-    const namespaceInstructions = this.definition.instructions?.trim();
-    const tools: Tool[] = this.tools.map(([, tool]) => ({
-      name: `${namespace}.${tool.name}`,
-      description: namespaceInstructions
-        ? `${namespaceInstructions} ${tool.description}`
-        : tool.description!,
-      inputSchema: tool.inputSchema,
-      outputSchema: tool.outputSchema,
-      annotations: tool.annotations,
-      _meta: tool._meta,
-    }));
-    for (const mcp of this.mcp) {
-      tools.push(...mcp.toolsGet(namespace));
-    }
-    return tools;
-  }
-
 }

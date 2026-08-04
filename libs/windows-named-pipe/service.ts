@@ -26,7 +26,7 @@ const controlPath = `\\\\.\\pipe\\windows-named-pipe-dashboard-${instanceId}`;
 let owner: Owner | undefined;
 let starting: Promise<WindowsNamedPipeState> | undefined;
 
-const stateRequest = () => new Promise<WindowsNamedPipeState | undefined>((resolve, reject) => {
+const stateRequest = (timeoutMs = 1000) => new Promise<WindowsNamedPipeState | undefined>((resolve, reject) => {
   let responseText = "";
   let settled = false;
   const socket = createConnection(controlPath);
@@ -39,7 +39,7 @@ const stateRequest = () => new Promise<WindowsNamedPipeState | undefined>((resol
   const timeout = setTimeout(() => {
     socket.destroy();
     if (settle()) reject(new Error(`Windows Named Pipe state request timed out: ${controlPath}`));
-  }, 1000);
+  }, timeoutMs);
   socket.setEncoding("utf8");
   socket.once("connect", () => socket.write(`${JSON.stringify({ action: "status" })}\n`));
   socket.on("data", chunk => {
@@ -83,22 +83,12 @@ const controlAcquire = (control: ControlServer) => new Promise<boolean>((resolve
   control.listen(controlPath);
 });
 
-const remoteStateWait = async () => {
-  let cause: unknown;
-  for (let index = 0; index < 200; index += 1) {
-    try {
-      const state = await stateRequest();
-      if (state) return state;
-    } catch (error) {
-      cause = error;
-    }
-    await new Promise(resolve => setTimeout(resolve, 50));
-  }
-  throw new Error("Windows Named Pipe owner did not publish a running state", { cause });
-};
-
 const ownerStart = async () => {
   let state: WindowsNamedPipeState | undefined;
+  let statePublish!: (response: { error?: string; state?: WindowsNamedPipeState }) => void;
+  const statePublication = new Promise<{ error?: string; state?: WindowsNamedPipeState }>(resolve => {
+    statePublish = resolve;
+  });
   const control = createServer(socket => {
     let requestText = "";
     socket.setEncoding("utf8");
@@ -107,17 +97,20 @@ const ownerStart = async () => {
       requestText += chunk;
       const newlineIndex = requestText.indexOf("\n");
       if (newlineIndex < 0) return;
-      try {
+      void (async () => {
         const request = JSON.parse(requestText.slice(0, newlineIndex)) as { action?: unknown };
         if (request.action !== "status") throw new Error(`Unsupported action: ${String(request.action)}`);
-        if (!state) throw new Error("Windows Named Pipe service is starting");
-        socket.end(`${JSON.stringify({ state })}\n`);
-      } catch (error) {
+        socket.end(`${JSON.stringify(await statePublication)}\n`);
+      })().catch(error => {
         socket.end(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error) })}\n`);
-      }
+      });
     });
   });
-  if (!await controlAcquire(control)) return remoteStateWait();
+  if (!await controlAcquire(control)) {
+    const remoteState = await stateRequest(15000);
+    if (!remoteState) throw new Error("Windows Named Pipe owner did not publish a running state");
+    return remoteState;
+  }
 
   try {
     const http = await new Promise<ServerType>((resolve, reject) => {
@@ -133,9 +126,11 @@ const ownerStart = async () => {
       status: "running",
       url: `http://127.0.0.1:${String(address.port)}/node-service`,
     };
+    statePublish({ state });
     owner = { control, http, state };
     return state;
   } catch (error) {
+    statePublish({ error: error instanceof Error ? error.message : String(error) });
     control.close();
     throw error;
   }

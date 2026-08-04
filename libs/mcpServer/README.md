@@ -7,49 +7,134 @@
 ```text
 libs/mcpServer/
 ├── index.ts
-│   └── default Mcp
-│       ├── new Mcp(options)                                 # 创建 MCP 母库实例并装配内置功能
-│       ├── mcp.register(namespace, register)                # 增加项目内功能；调用 public.ts.honoMount(...)
-│       ├── mcp.registerFromNpm(name)                        # 启用外部 MCP；调用 mcpFromNpm/public.ts.mount(...)
-│       └── mcp.hono                                        # 提供给外部 Hono.route(...) 挂载的路由
-│           ├── ALL /todo-mcp                               # MCP 调用入口
-│           └── GET /todo-mcp2/overview                     # 人类工具概览入口
+│   └── class Mcp<CurrentSchema extends Schema = {}>
+│       ├── constructor(...args: ConstructorParameters<typeof McpServer>)
+│       │                                                    // 创建 MCP 母库实例并装配内置功能
+│       ├── register<const Namespace extends string, FragmentSchema extends Schema>(
+│       │     namespace: Namespace,
+│       │     mcp: Register<FragmentSchema>,
+│       │   ): Mcp<NextSchema<CurrentSchema, `/${Namespace}`, FragmentSchema>>
+│       │                                                    // 挂载项目内配件；调用 Register.honoMount()
+│       ├── registerFromNpm<const Name extends keyof typeof mcpFromNpm>(
+│       │     name: Name,
+│       │   ): Promise<Mcp<
+│       │     NextFromNpmSchema<CurrentSchema, (typeof mcpFromNpm)[Name]>
+│       │   >>                                               // 启用已登记外部 MCP；调用 productMount()
+│       └── readonly hono: HonoBase<BlankEnv, CurrentSchema, "/", "/">
+│                                                            // 提供给外部 Hono.route() 挂载的路由
+│           ├── ALL /todo-mcp                               // MCP 调用入口
+│           └── GET /todo-mcp2/overview                     // 人类工具概览入口
 ├── mcp/
-│   ├── ai-call-ai/                                    # 让不同工作区的 Codex 交换联系卡和消息
-│   ├── error.ts                                       # 生产并持久化 MCP 接口错误切片
-│   ├── overview.ts                                    # 提供工具搜索和单项工具契约
-│   ├── watcher.ts                                     # 提供 watcher 定义、报告和生命周期接口
+│   ├── ai-call-ai/                                    // 让不同工作区的 Codex 交换联系卡和消息
+│   │   ├── index.ts
+│   │   │   ├── GET /WORKSPACE_AI_CONTACT             // 取得目标工作区联系卡
+│   │   │   └── POST /WORKSPACE_AI_CONTACT            // 向目标工作区 Codex 发送消息
+│   │   └── WORKSPACE_AI_CONTACT.ts
+│   │       ├── const cardSchema: z.ZodObject          // 验证工作区联系卡输入
+│   │       ├── const inputSchema: z.ZodObject         // 验证跨工作区消息输入
+│   │       └── class WORKSPACE_AI_CONTACT             // default 导出该类的唯一实例
+│   │           ├── card(workspacePath: string): Promise<string>
+│   │           │                                      // 生成当前 VS Code Codex 窗口联系卡
+│   │           └── input(input: Omit<
+│   │                 z.infer<typeof inputSchema>,
+│   │                 "senderWorkspacePath"
+│   │               >): Promise<string>                // 向目标 Codex 窗口发送消息
+│   ├── error.ts                                       // 生产并持久化 MCP 接口错误切片
+│   ├── overview.ts
+│   │   └── class Overview
+│   │       ├── readonly mcp: Register                 // 交付 overview Hono/MCP 动作
+│   │       └── toolsSet(toolsGet: () => Promise<Tool[]>): this
+│   │                                                  // 注入当前母库工具数据生产者
+│   ├── watcher.ts
+│   │   ├── GET /definition                           // 生产 watcher 会话定义
+│   │   ├── POST /report                              // 输出一份 watcher 异常报告
+│   │   └── POST /lifecycle                           // 输出 watcher 上线或离线事件
 │   └── workcopy/
-│       ├── index.ts                                   # 提供 SSD 工作副本业务接口
-│       │   ├── workcopy.create.POST                   # 创建并校验工作副本，登记 creating/developing
-│       │   ├── workcopy.status.GET                    # 查询全部账本或单个项目的实时差异与冲突
-│       │   └── workcopy.sync.POST                     # 校验后回迁新增和修改；只删除明确授权路径
-│       └── store.ts                                   # 生产 workcopy 数据与 action 切片
+│       ├── index.ts
+│       │   └── const workcopy: Register               // 提供 SSD 工作副本业务接口
+│       │       ├── POST /create                       // 创建并校验工作副本，登记 creating/developing
+│       │       ├── GET /status                        // 查询全部账本或单个项目的实时差异与冲突
+│       │       └── POST /sync                         // 校验后回迁新增和修改；只删除明确授权路径
+│       └── store.ts                                   // 生产 workcopy 数据与 action 切片
 ├── mcpFromNpm/
-│   ├── browser.ts                                     # 接入浏览器 MCP
-│   ├── codegraph.ts                                   # 接入源码关系 MCP
-│   ├── docs.ts                                        # 接入第三方文档 MCP
-│   ├── io.ts                                          # 接入受限文件系统 MCP
-│   ├── workspace.ts                                   # 接入本机工作区 MCP
+│   ├── browser.ts                                     // 接入浏览器 MCP
+│   ├── codegraph.ts                                   // 接入源码关系 MCP
+│   ├── docs.ts                                        // 接入第三方文档 MCP
+│   ├── io.ts                                          // 接入受限文件系统 MCP
+│   ├── workspace.ts                                   // 接入本机工作区 MCP
 │   └── public.ts
-│       └── default RegisterFromNpm                    # 外部 MCP 接入配件
-│           ├── register(...)                          # 登记外部 MCP 的名称、连接和说明
-│           ├── replace(...)                           # 调整指定外部工具的公开契约
-│           ├── add(...)                               # 增加随外部 MCP 一起提供的项目内功能
-│           ├── mount(...)                             # 连接外部 MCP 并挂载附加 Hono 路由
-│           ├── healthAudit()                          # 检查已登记 stdio child 与 transport 状态；调用 close()
-│           ├── close()                                # 精确关闭当前实例持有的 Client 与 Transport
-│           ├── serverMount(...)                       # 把已连接工具注册到 McpServer
-│           └── toolsGet(...)                          # 生成当前外部 MCP 的工具概览数据
+│       └── class RegisterFromNpm<
+│             Namespace extends string = string,
+│             CurrentSchema extends Schema = {},
+│           >
+│           ├── constructor(source?: RegisterFromNpm<Namespace, CurrentSchema>)
+│           │                                          // 复制登记配置，不复制连接运行态
+│           ├── register<const NextNamespace extends string>(
+│           │     definition: Definition & { namespace: NextNamespace },
+│           │   ): RegisterFromNpm<NextNamespace, CurrentSchema>
+│           │                                          // 登记外部 MCP 的名称、连接和说明
+│           ├── replace(replacement: Replacement): this
+│           │                                          // 调整指定外部工具的公开契约
+│           ├── add<FragmentSchema extends Schema>(
+│           │     addition: Register<FragmentSchema>
+│           │       | ((toolCall: ToolCall) => Register<FragmentSchema>),
+│           │   ): RegisterFromNpm<
+│           │     Namespace,
+│           │     CurrentSchema | FragmentSchema
+│           │   >
+│           │                                          // 增加随外部 MCP 一起提供的项目内功能
+│           ├── mount<ParentSchema extends Schema>(
+│           │     hono: HonoBase<BlankEnv, ParentSchema, "/", "/">,
+│           │   ): Promise<HonoBase<
+│           │     BlankEnv,
+│           │     ParentSchema | MergeSchemaPath<
+│           │       CurrentSchema,
+│           │       MergePath<"/", `/${Namespace}`>
+│           │     >,
+│           │     "/",
+│           │     "/"
+│           │   >>                                     // 连接外部 MCP 并挂载附加 Hono 路由
+│           ├── healthAudit(): Promise<boolean>
+│           │                                          // 审计当前实例；失效时调用 close()
+│           ├── close(): Promise<void>                 // 精确关闭当前实例持有的 Client 与 Transport
+│           ├── serverMount(server: McpServer): void   // 把已连接工具注册到 McpServer
+│           └── toolsGet(): Tool[]                     // 生成当前外部 MCP 的工具概览数据
 ├── public.ts
-│   └── default Register                              # 项目内 Hono 功能配件
-│       ├── register(...)                              # 登记一个 Hono 动作
-│       ├── honoMount(...)                             # 挂载 Hono 路由；调用 Hono.route(...)
-│       ├── serverMount(...)                           # 注册 MCP 工具；调用 McpServer.registerTool(...)
-│       └── toolsGet(...)                              # 生成工具概览数据
+│   └── class Register<CurrentSchema extends Schema = {}>
+│       ├── register<
+│       │     const Path extends `/${string}`,
+│       │     HonoEnv extends Env,
+│       │     ChildSchema extends Schema,
+│       │     HonoBasePath extends string,
+│       │     HonoCurrentPath extends string,
+│       │     InputSchema extends z.ZodObject<z.ZodRawShape>,
+│       │   >(...definition: Definition<
+│       │     Path,
+│       │     HonoBase<HonoEnv, ChildSchema, HonoBasePath, HonoCurrentPath>,
+│       │     InputSchema
+│       │   >): Register<
+│       │     CurrentSchema | MergeSchemaPath<ChildSchema, MergePath<"/", Path>>
+│       │   >                                          // 登记一个 Hono 动作
+│       ├── serverMount(
+│       │     namespace: string,
+│       │     server: McpServer,
+│       │     namespaceInstructions?: string,
+│       │   ): void                                    // 注册 MCP 工具；调用 McpServer.registerTool()
+│       ├── toolsGet(namespace: string): Tool[]        // 生成工具概览数据
+│       └── honoMount<ParentSchema extends Schema>(
+│             namespace: string,
+│             hono: HonoBase<BlankEnv, ParentSchema, "/", "/">,
+│           ): void                                    // 挂载 Hono 路由；调用 Hono.route()
 ├── store/
-│   ├── index.ts                                       # 唯一 Zustand 主仓库，组合切片并持久化数据
-│   └── type.ts                                        # 定义完整 Store 数据与 Actions 契约
+│   ├── index.ts
+│   │   └── const store: StoreApi<Store>               // 唯一 Zustand 主仓库，组合切片并持久化数据
+│   └── type.ts
+│       └── type Store
+│           ├── mcpError.entries                       // 保存 MCP 接口错误
+│           ├── mcpErrorActions.errorAdd(error): void  // 新增并持久化一条 MCP 接口错误
+│           ├── workcopy.projects                      // 保存工作副本账本
+│           └── workcopyActions.projectSet(project): void
+│                                                       // 新增或更新一份工作副本账本
 ├── package.json
 └── tsconfig.json
 ```
