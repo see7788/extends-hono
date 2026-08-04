@@ -80,8 +80,9 @@ export default function App() {
   };
   const root = nodesById?.[1];
   const treeData = root ? nodeChildren(root.id).map(nodeValue => treeNode(nodeValue)) : [];
-  const nodeOpen = (id: number) => {
+  const nodeReveal = (id: number) => {
     const expanded = new Set(expandedNodeIds);
+    expanded.add(id);
     let current = nodesById?.[id];
     while (current?.id_parent !== null && current?.id_parent !== undefined) {
       const parent = nodesById?.[current.id_parent];
@@ -91,7 +92,6 @@ export default function App() {
     }
     expandedNodeIdsSet(expanded);
     store.getState().todotreeActions.nodeRead(id);
-    void navigate(`/${String(id)}`);
   };
 
   return (
@@ -124,7 +124,7 @@ export default function App() {
         {todotreeRecent.map(recent => (
           <Button
             key={recent.id}
-            onClick={() => nodeOpen(recent.id)}
+            onClick={() => nodeReveal(recent.id)}
             size="small"
             style={{ color: recent.unread ? token.colorPrimary : undefined }}
             title={nodesById?.[recent.id]?.title}
