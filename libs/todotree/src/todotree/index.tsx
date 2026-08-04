@@ -108,6 +108,7 @@ export default function App() {
 
   return (
     <Flex
+      onClick={() => revealedNodeIdSet(undefined)}
       style={{
         background: token.colorBgContainer,
         boxSizing: "border-box",
@@ -136,7 +137,10 @@ export default function App() {
         {todotreeRecent.map(recent => (
           <Button
             key={recent.id}
-            onClick={() => nodeReveal(recent.id)}
+            onClick={event => {
+              event.stopPropagation();
+              nodeReveal(recent.id);
+            }}
             size="small"
             style={{ color: recent.unread ? token.colorPrimary : undefined }}
             title={nodesById?.[recent.id]?.title}
