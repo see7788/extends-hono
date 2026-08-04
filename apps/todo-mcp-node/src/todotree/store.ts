@@ -73,6 +73,12 @@ const setValue = z.object({
 const del = z.object({
   id: z.number().int().positive(),
 });
+const move = z.object({
+  id: z.number().int().positive(),
+  id_parent: z.number().int().positive(),
+}).refine(value => value.id !== value.id_parent, {
+  message: "TodoTree node cannot be moved below itself.",
+});
 const tree = z.object({
   nodesById: z.record(z.string(), node),
 });
@@ -107,6 +113,7 @@ export const validator = {
   batch,
   conversationInit,
   del,
+  move,
   nodeSearch,
   projectRegister: z.object({ projectPath: currentWorkspacePath }),
   projectResolve,
@@ -180,6 +187,11 @@ const nodeInsert = database.prepare(`
 const nodeUpdate = database.prepare(`
   UPDATE todotree_node
   SET title = ?, template = ?, status = ?, agent = ?
+  WHERE id = ?
+`);
+const nodeMove = database.prepare(`
+  UPDATE todotree_node
+  SET id_parent = ?
   WHERE id = ?
 `);
 const descendantIds = database.prepare(`
@@ -440,6 +452,35 @@ const store = {
     ));
     nodeDelete.run(idValue);
     return ids;
+  }),
+  move: database.transaction((options: z.input<typeof validator.move>) => {
+    const optionsValue = validator.move.parse(options);
+    const currentNode = nodeRead(optionsValue.id);
+    const parentNode = nodeRead(optionsValue.id_parent);
+    if (currentNode.id === 1 || currentNode.template === "project") {
+      throw new HTTPException(409, { message: "TodoTree root and project nodes cannot be moved." });
+    }
+    if (projectContainsNode.get(currentNode.id, parentNode.id)) {
+      throw new HTTPException(409, {
+        message: "TodoTree node cannot be moved below itself or its descendants.",
+      });
+    }
+    const projects = projectsAll.all().map(databaseNodeRead);
+    const currentProject = projects.find(nodeValue => (
+      projectContainsNode.get(nodeValue.id, currentNode.id)
+    ));
+    const parentProject = projects.find(nodeValue => (
+      projectContainsNode.get(nodeValue.id, parentNode.id)
+    ));
+    if (!currentProject || currentProject.id !== parentProject?.id) {
+      throw new HTTPException(409, { message: "TodoTree node cannot be moved across projects." });
+    }
+    nodePlacementValidate(parentNode, { ...currentNode, id_parent: parentNode.id });
+    if (currentNode.status !== 7 && completedAncestor.get(parentNode.id)) {
+      throw new HTTPException(409, { message: "已完成节点的后代必须保持已完成状态。" });
+    }
+    nodeMove.run(parentNode.id, currentNode.id);
+    return nodeRead(currentNode.id);
   }),
   set: database.transaction((options: z.input<typeof validator.set>) => {
     const optionsValue = validator.set.parse(options);

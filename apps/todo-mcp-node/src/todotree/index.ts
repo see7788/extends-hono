@@ -108,6 +108,26 @@ export default new Register({
     },
   )
   .register(
+    "/node/move",
+    new Hono().post(
+      "/",
+      zValidator("json", validator.move),
+      async context => {
+        const nodeValue = store.move(context.req.valid("json"));
+        await eventSend({ event: "set", data: nodeValue });
+        return context.json(nodeValue, 200);
+      },
+    ),
+    validator.move,
+    "人类与 AI 共用：把非项目节点迁移到同一具体项目的新父节点，并维护层级、循环与完成状态不变量。",
+    {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  )
+  .register(
     "/node/set",
     new Hono().post(
       "/",
