@@ -1,32 +1,58 @@
 import type { ImmerStateCreator } from "extends-zustand/immerStateCreator";
 import { hc } from "hono/client";
 import type { TodoMcpApi } from "todo-mcp-node/src/routers.ts";
-import todotree, { TodoTreeStore } from "todo-mcp-node/src/todotree/store.ts";
-export type todotree_t = TodoTreeStore & { connect: () => () => void }
-const store: ImmerStateCreator<todotree_t> = (_set, get, store) => ({
-  ...todotree(_set, get, store),
-  connect: () => {
-    const client = hc<TodoMcpApi>(window.location.origin);
-    const eventSource = new EventSource(client["todo-mcp-node"].events.$url());
-    eventSource.addEventListener("tree", event => {
-      get().todotreeActions.treeSet(
-        JSON.parse(event.data) as TodoTreeStore["todotree"],
-      );
-    });
-    eventSource.addEventListener("add", event => {
-      get().todotreeActions.add(
-        JSON.parse(event.data) as Parameters<TodoTreeStore["todotreeActions"]["add"]>[0],
-      );
-    });
-    eventSource.addEventListener("del", event => {
-      get().todotreeActions.del(JSON.parse(event.data) as number);
-    });
-    eventSource.addEventListener("set", event => {
-      get().todotreeActions.set(
-        JSON.parse(event.data) as Parameters<TodoTreeStore["todotreeActions"]["set"]>[0],
-      );
-    });
-    return () => eventSource.close();
+import type {
+  TodoTreeNode,
+  TodoTreeState,
+} from "todo-mcp-node/src/todotree/store.ts";
+
+export type TodoTreeStore = {
+  todotree: TodoTreeState | undefined;
+  todotreeActions: {
+    connect(): () => void;
+    nodeAdd(node: TodoTreeNode): void;
+    nodeDel(ids: number[]): void;
+    nodeSet(node: TodoTreeNode): void;
+    treeSet(tree: TodoTreeState): void;
+  };
+};
+
+const store: ImmerStateCreator<TodoTreeStore> = (set, get) => ({
+  todotree: undefined,
+  todotreeActions: {
+    connect: () => {
+      const client = hc<TodoMcpApi>(window.location.origin);
+      const eventSource = new EventSource(client["todo-mcp-node"].events.$url());
+      eventSource.addEventListener("tree", event => {
+        get().todotreeActions.treeSet(JSON.parse(event.data) as TodoTreeState);
+      });
+      eventSource.addEventListener("add", event => {
+        get().todotreeActions.nodeAdd(JSON.parse(event.data) as TodoTreeNode);
+      });
+      eventSource.addEventListener("del", event => {
+        get().todotreeActions.nodeDel(JSON.parse(event.data) as number[]);
+      });
+      eventSource.addEventListener("set", event => {
+        get().todotreeActions.nodeSet(JSON.parse(event.data) as TodoTreeNode);
+      });
+      return () => eventSource.close();
+    },
+    nodeAdd: node => set(state => {
+      if (!state.todotree) throw new Error("TodoTree has not been received.");
+      state.todotree.treeData.nodesById[node.id] = node;
+      state.todotree.treeDataMaxId = Math.max(state.todotree.treeDataMaxId, node.id);
+    }),
+    nodeDel: ids => set(state => {
+      if (!state.todotree) throw new Error("TodoTree has not been received.");
+      for (const id of ids) delete state.todotree.treeData.nodesById[id];
+    }),
+    nodeSet: node => set(state => {
+      if (!state.todotree) throw new Error("TodoTree has not been received.");
+      state.todotree.treeData.nodesById[node.id] = node;
+    }),
+    treeSet: tree => set(state => {
+      state.todotree = tree;
+    }),
   },
 });
 

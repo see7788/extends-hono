@@ -3,8 +3,7 @@ import { Hono } from "hono";
 import { streamSSE, type SSEStreamingApi } from "hono/streaming";
 import Register from "mcp-server/public.ts";
 import { z } from "zod";
-import store from "../store.ts";
-import { validator } from "./store.ts";
+import store, { validator } from "./store.ts";
 
 const streams = new Set<SSEStreamingApi>();
 const treeQuery = z.object({});
@@ -35,8 +34,8 @@ export default new Register({
       zValidator("json", validator.add),
       async context => {
         const options = context.req.valid("json");
-        const nodeValue = store.getState().todotreeActions.add(options);
-        await eventSend({ event: "add", data: options });
+        const nodeValue = store.add(options);
+        await eventSend({ event: "add", data: nodeValue });
         return context.json(nodeValue, 200);
       },
     ),
@@ -56,9 +55,9 @@ export default new Register({
       zValidator("json", validator.del),
       async context => {
         const { id } = context.req.valid("json");
-        const ids = store.getState().todotreeActions.del(id);
+        const ids = store.del(id);
         const result = { ids };
-        await eventSend({ event: "del", data: id });
+        await eventSend({ event: "del", data: ids });
         return context.json(result, 200);
       },
     ),
@@ -78,8 +77,8 @@ export default new Register({
       zValidator("json", validator.set),
       async context => {
         const options = context.req.valid("json");
-        const nodeValue = store.getState().todotreeActions.set(options);
-        await eventSend({ event: "set", data: options });
+        const nodeValue = store.set(options);
+        await eventSend({ event: "set", data: nodeValue });
         return context.json(nodeValue, 200);
       },
     ),
@@ -97,7 +96,7 @@ export default new Register({
     new Hono().get(
       "/",
       zValidator("query", treeQuery),
-      context => context.json(store.getState().todotree, 200),
+      context => context.json(store.tree(), 200),
     ),
     treeQuery,
     "读取当前完整任务树与最大节点 ID。",
@@ -118,7 +117,7 @@ export default new Register({
       try {
         await stream.writeSSE({
           event: "tree",
-          data: JSON.stringify(store.getState().todotree),
+          data: JSON.stringify(store.tree()),
         });
         await closed;
       } finally {

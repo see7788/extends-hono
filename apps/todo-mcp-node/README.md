@@ -12,20 +12,24 @@ todo-mcp-node/
 │   ├── routers.ts
 │   │   ├── TodoMcpApi: type                        // 供前端 hc 消费完整 Hono 类型
 │   │   └── default: Hono                           // 注册 create-todo-cli、honoapp、todotree 与页面
-│   ├── store.ts
-│   │   └── default: StoreApi<TodoTreeStore>        // 用 cwdPersist、Immer 和切片生产唯一主仓库
 │   └── todotree/
 │       ├── index.ts
-│       │   ├── events: Hono                        // 仓库变化后通过 SSE 推送正式数据
 │       │   └── default: Register
-│       │       ├── todotree.add.POST               // 新增节点；页面新增子节点时联系工作区 Codex
-│       │       ├── todotree.set.POST               // 修改一个节点字段
-│       │       └── todotree.tree.GET               // 读取完整 TodoTree 数据
+│       │       ├── node.add.POST                    // 提交事务后新增节点并推送正式节点
+│       │       ├── node.del.POST                    // 提交事务后删除节点树并推送正式 ID 集合
+│       │       ├── node.set.POST                    // 提交事务后修改节点并推送正式节点
+│       │       ├── tree.GET                         // 读取 SQLite 生产的完整 TodoTree 数据
+│       │       └── events.GET                       // 向页面交付初始树与后续正式变化
 │       └── store.ts
-│           ├── validator                           // 生产前后端共同使用的数据与入参验证器
-│           ├── TodoTreeStore: type                 // 从 validator 推导前后端共同仓库类型
-│           └── default: ImmerStateCreator          // 生产 TodoTree 数据和 action
-├── vite.config.ts                                  // 固定 3005/3111 并构建 todotree
+│           ├── validator                           // 生产接口与 SQLite 共同使用的验证器
+│           ├── TodoTreeNode: type                  // 交付正式节点类型
+│           ├── TodoTreeState: type                 // 交付正式任务树类型
+│           └── default
+│               ├── add(options): TodoTreeNode      // 在事务中新增节点
+│               ├── del(id): number[]              // 在事务中删除节点及全部后代
+│               ├── set(options): TodoTreeNode      // 在事务中修改并读取正式节点
+│               └── tree(): TodoTreeState           // 从 SQLite 生产完整任务树
+├── vite.config.ts                                  // 固定 3005 并构建 todotree
 └── package.json
 ```
 
@@ -35,4 +39,4 @@ todo-mcp-node/
 pnpm --filter todo-mcp-node dev
 ```
 
-TodoTree 页面位于 `http://127.0.0.1:3005/todotree/`，MCP 位于 `http://127.0.0.1:3005/todo-mcp`；主仓库通过 `extends-zustand/cwdPersist` 持久化到 `D:\ssdpro\.zustand\todo-mcp-store.json`。
+TodoTree 页面位于 `http://127.0.0.1:3005/todotree/`，MCP 位于 `http://127.0.0.1:3005/todo-mcp`；SQLite 位于 `join(homedir(), ".store", md5(projectPath), "store.sqlite")`。

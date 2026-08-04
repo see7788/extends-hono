@@ -29,7 +29,7 @@ export default function App() {
   const navigate = useNavigate();
   const [loadedNodeIds, loadedNodeIdsSet] = useState<ReadonlySet<number>>(new Set());
   const [hoveredNodeId, hoveredNodeIdSet] = useState<number>();
-  useEffect(() => store.getState().connect(), []);
+  useEffect(() => store.getState().todotreeActions.connect(), []);
   const nodesById = todotree?.treeData.nodesById;
   const nodesByParentId = useMemo(() => {
     const nodes = new Map<number | null, TodoTreeNode[]>();
@@ -96,15 +96,17 @@ export default function App() {
       <Typography.Title level={5}>
         TodoTree #{String(todotree?.treeDataMaxId ?? 0)}
       </Typography.Title>
-      <Tree
-        blockNode
-        defaultExpandedKeys={[1]}
-        loadData={async node => {
-          loadedNodeIdsSet(current => new Set(current).add(Number(node.key)));
-        }}
-        selectable={false}
-        treeData={treeData}
-      />
+      {root && (
+        <Tree
+          blockNode
+          defaultExpandedKeys={[1]}
+          loadData={async node => {
+            loadedNodeIdsSet(current => new Set(current).add(Number(node.key)));
+          }}
+          selectable={false}
+          treeData={treeData}
+        />
+      )}
       <Outlet />
     </Flex>
   );
