@@ -48,6 +48,14 @@ export default function App() {
     }
     return ids;
   }, [nodesById, statusFilter]);
+  const statusCountByStatus = useMemo(() => {
+    const counts = new Map<TodoTreeNode["status"], number>();
+    for (const option of statusOptions) counts.set(option.value, 0);
+    for (const node of Object.values(nodesById ?? {})) {
+      if (node.id !== 1) counts.set(node.status, (counts.get(node.status) ?? 0) + 1);
+    }
+    return counts;
+  }, [nodesById]);
   const nodeChildren = (id: number) => (nodesByParentId.get(id) ?? []).filter(
     nodeValue => statusFilter === "all" || filteredNodeIds.has(nodeValue.id),
   );
@@ -189,6 +197,13 @@ export default function App() {
       >
         {([{ label: "全部", value: "all" }, ...statusOptions] as const).map(({ label, value }) => (
           <FloatButton
+            badge={{
+              count: value === "all"
+                ? Object.values(nodesById ?? {}).filter(node => node.id !== 1).length
+                : statusCountByStatus.get(value) ?? 0,
+              overflowCount: Number.MAX_SAFE_INTEGER,
+              showZero: true,
+            }}
             description={label}
             key={value}
             onClick={() => {
