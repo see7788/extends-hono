@@ -4,13 +4,12 @@ import { useState } from "react";
 import type { TodoMcpApi } from "todo-mcp-node/src/routers.ts";
 import type { TodoTreeStore } from "todo-mcp-node/src/todotree/store.ts";
 import store from "../store.ts";
-// import NodeDrawer from "./Drawer.tsx";
+import NodeDrawer from "./Drawer.tsx";
 
 type TodoTreeNode = TodoTreeStore["todotree"]["nodesById"][number];
 const client = hc<TodoMcpApi>(location.origin);
 
 export default function App() {
-  return <>1111111111111</>
   const todotree = store(state => state.todotree);
   const [drawerNodeId, drawerNodeIdSet] = useState<number>();
   const treeNode = (node: TodoTreeNode): TreeDataNode => {

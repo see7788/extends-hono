@@ -15,5 +15,8 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vite": "^8.0.11"
+  },
+  "dependencies": {
+    "@hono/vite-dev-server": "0.26.1"
   }
 }

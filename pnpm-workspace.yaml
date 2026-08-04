@@ -6,3 +6,4 @@ packages:
   - "../extends-ssh"
   - "../remote-runtimeobj/webrtcsignaling"
   - "../create-todo-cli/mcpCreate"
+  - "../create-todo-cli/src"

@@ -3,11 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "config": {
-    "honoHost": "127.0.0.1",
-    "honoPort": 3005,
-    "honoOtherPort": 3111
-  },
   "exports": {
     "./*.ts": "./*.ts"
   },
