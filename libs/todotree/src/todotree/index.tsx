@@ -1,15 +1,5 @@
-import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  FilterOutlined,
-  FormOutlined,
-  HourglassOutlined,
-  PlayCircleOutlined,
-  QuestionCircleOutlined,
-  StopOutlined,
-  UnorderedListOutlined,
-} from "@ant-design/icons";
-import { Button, Flex, FloatButton, theme, Tree, Typography, type TreeDataNode } from "antd";
+import { FormOutlined } from "@ant-design/icons";
+import { Button, Flex, Space, theme, Tree, Typography, type TreeDataNode } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { statusOptions } from "todo-mcp-node/src/todotree/contract.ts";
@@ -190,18 +180,9 @@ export default function App() {
           </Button>
         ))}
       </Flex>
-      <FloatButton.Group icon={<FilterOutlined />} trigger="click">
-        {([
-          ["all", "全部", <UnorderedListOutlined key="all" />],
-          [1, "待确认", <QuestionCircleOutlined key="decision" />],
-          [2, "待办", <HourglassOutlined key="todo" />],
-          [4, "运行中", <PlayCircleOutlined key="running" />],
-          [8, "阻塞", <StopOutlined key="blocked" />],
-          [9, "已取消", <CloseCircleOutlined key="canceled" />],
-          [7, "已完成", <CheckCircleOutlined key="completed" />],
-        ] as const).map(([value, label, icon]) => (
-          <FloatButton
-            icon={icon}
+      <Space.Compact style={{ bottom: token.margin, position: "fixed", right: token.margin }}>
+        {([{ label: "全部", value: "all" }, ...statusOptions] as const).map(({ label, value }) => (
+          <Button
             key={value}
             onClick={() => {
               statusFilterSet(value);
@@ -212,12 +193,14 @@ export default function App() {
             }}
             style={statusFilter === value ? {
               background: token.colorSuccess,
+              borderColor: token.colorSuccess,
               color: token.colorTextLightSolid,
-            } : undefined}
-            tooltip={label}
-          />
+            } : {}}
+          >
+            {label}
+          </Button>
         ))}
-      </FloatButton.Group>
+      </Space.Compact>
       <Outlet />
     </Flex>
   );
