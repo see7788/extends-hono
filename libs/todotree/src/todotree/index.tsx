@@ -1,4 +1,14 @@
-import { FilterOutlined, FormOutlined } from "@ant-design/icons";
+import {
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  FilterOutlined,
+  FormOutlined,
+  HourglassOutlined,
+  PlayCircleOutlined,
+  QuestionCircleOutlined,
+  StopOutlined,
+  UnorderedListOutlined,
+} from "@ant-design/icons";
 import { Button, Flex, FloatButton, theme, Tree, Typography, type TreeDataNode } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
@@ -15,7 +25,7 @@ export default function App() {
   const [expandedNodeIds, expandedNodeIdsSet] = useState<ReadonlySet<number>>(new Set());
   const [revealedNodeId, revealedNodeIdSet] = useState<number>();
   const [hoveredNodeId, hoveredNodeIdSet] = useState<number>();
-  const [decisionFilter, decisionFilterSet] = useState(false);
+  const [statusFilter, statusFilterSet] = useState<"all" | TodoTreeNode["status"]>("all");
   useEffect(() => store.getState().todotreeActions.connect(), []);
   const nodesById = todotree?.treeData.nodesById;
   const statusLabelRead = (status: TodoTreeNode["status"]) => {
@@ -35,25 +45,25 @@ export default function App() {
     }
     return nodes;
   }, [nodesById]);
-  const decisionNodeIds = useMemo(() => {
+  const filteredNodeIds = useMemo(() => {
+    if (statusFilter === "all") return new Set<number>();
     const ids = new Set<number>();
-    for (const attention of Object.values(todotree?.projectAttentionById ?? {})) {
-      for (const decisionId of attention.decisionIds) {
-        let current = nodesById?.[decisionId];
-        while (current) {
-          ids.add(current.id);
-          current = current.id_parent === null ? undefined : nodesById?.[current.id_parent];
-        }
+    for (const node of Object.values(nodesById ?? {})) {
+      if (node.status !== statusFilter) continue;
+      let current: TodoTreeNode | undefined = node;
+      while (current) {
+        ids.add(current.id);
+        current = current.id_parent === null ? undefined : nodesById?.[current.id_parent];
       }
     }
     return ids;
-  }, [nodesById, todotree?.projectAttentionById]);
+  }, [nodesById, statusFilter]);
   const nodeChildren = (id: number) => (nodesByParentId.get(id) ?? []).filter(
-    nodeValue => !decisionFilter || decisionNodeIds.has(nodeValue.id),
+    nodeValue => statusFilter === "all" || filteredNodeIds.has(nodeValue.id),
   );
   const treeNode = (
     node: TodoTreeNode,
-    childrenShow = decisionFilter || expandedNodeIds.has(node.id),
+    childrenShow = statusFilter !== "all" || expandedNodeIds.has(node.id),
   ): TreeDataNode => {
     const children = nodeChildren(node.id);
     const drawerAvailable = node.id !== 1;
@@ -150,9 +160,9 @@ export default function App() {
       {root && (
         <Tree
           blockNode
-          expandedKeys={[...(decisionFilter ? decisionNodeIds : expandedNodeIds)]}
+          expandedKeys={[...(statusFilter === "all" ? expandedNodeIds : filteredNodeIds)]}
           onExpand={keys => {
-            if (decisionFilter) return;
+            if (statusFilter !== "all") return;
             expandedNodeIdsSet(new Set(keys.map(Number)));
           }}
           selectable={false}
@@ -180,23 +190,34 @@ export default function App() {
           </Button>
         ))}
       </Flex>
-      <FloatButton
-        icon={<FilterOutlined />}
-        onClick={() => {
-          if (decisionFilter) {
-            decisionFilterSet(false);
-            expandedNodeIdsSet(new Set());
-            revealedNodeIdSet(undefined);
-            return;
-          }
-          decisionFilterSet(true);
-        }}
-        style={decisionFilter ? {
-          background: token.colorSuccess,
-          color: token.colorTextLightSolid,
-        } : undefined}
-        tooltip={decisionFilter ? "显示全部并折叠" : "只看待决策"}
-      />
+      <FloatButton.Group icon={<FilterOutlined />} trigger="click">
+        {([
+          ["all", "全部", <UnorderedListOutlined key="all" />],
+          [1, "待确认", <QuestionCircleOutlined key="decision" />],
+          [2, "待办", <HourglassOutlined key="todo" />],
+          [4, "运行中", <PlayCircleOutlined key="running" />],
+          [8, "阻塞", <StopOutlined key="blocked" />],
+          [9, "已取消", <CloseCircleOutlined key="canceled" />],
+          [7, "已完成", <CheckCircleOutlined key="completed" />],
+        ] as const).map(([value, label, icon]) => (
+          <FloatButton
+            icon={icon}
+            key={value}
+            onClick={() => {
+              statusFilterSet(value);
+              if (value === "all") {
+                expandedNodeIdsSet(new Set());
+                revealedNodeIdSet(undefined);
+              }
+            }}
+            style={statusFilter === value ? {
+              background: token.colorSuccess,
+              color: token.colorTextLightSolid,
+            } : undefined}
+            tooltip={label}
+          />
+        ))}
+      </FloatButton.Group>
       <Outlet />
     </Flex>
   );
