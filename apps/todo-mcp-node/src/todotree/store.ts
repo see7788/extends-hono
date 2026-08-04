@@ -657,14 +657,14 @@ const store = {
       decisionPlacementValidate(nodeRead(nextNode.id_parent));
     }
     if (nextNode.status === 7 && unfinishedDescendant.get(nextNode.id)) {
-      throw new Error("存在未完成后代时，节点不能设为已完成。");
+      throw new HTTPException(409, { message: "存在未完成后代时，节点不能设为已完成。" });
     }
     if (
       nextNode.status !== 7
       && currentNode.id_parent !== null
       && completedAncestor.get(currentNode.id_parent)
     ) {
-      throw new Error("已完成节点的后代必须保持已完成状态。");
+      throw new HTTPException(409, { message: "已完成节点的后代必须保持已完成状态。" });
     }
     nodeUpdate.run(
       nextNode.title,
