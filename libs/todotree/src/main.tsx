@@ -1,8 +1,9 @@
 import { createRoot } from "react-dom/client";
-import App from "./todotree/index.tsx";
+import { RouterProvider } from "react-router-dom";
+import router from "./routers.tsx";
 import "./style.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("TodoTree root element does not exist.");
 
-createRoot(root).render(<App />);
+createRoot(root).render(<RouterProvider router={router} />);

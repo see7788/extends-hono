@@ -31,14 +31,14 @@ const node = z.object({
 });
 const add = z.object({
   title: z.string().trim().min(1),
-  id_parent: z.number().int().positive().nullable().optional(),
+  id_parent: z.number().int().positive(),
   agent: agent.optional(),
 }).superRefine((value, context) => {
-  if (value.id_parent == null && !workspacePath.safeParse(value.title).success) {
+  if (value.id_parent === 1 && !workspacePath.safeParse(value.title).success) {
     context.addIssue({
       code: "custom",
       path: ["title"],
-      message: "TodoTree root title must be an absolute workspace path.",
+      message: "TodoTree workspace title must be an absolute path.",
     });
   }
 });
@@ -92,8 +92,16 @@ export type TodoTreeStore = {
 
 const store: ImmerStateCreator<TodoTreeStore> = (set, get) => ({
   todotree: {
-    id: 0,
-    nodesById: {},
+    id: 1,
+    nodesById: {
+      1: {
+        id: 1,
+        id_parent: null,
+        title: "TodoTree",
+        status: 2,
+        agent: 1,
+      },
+    },
     nodeStatusLabelByStatus: {
       1: "待确认",
       2: "待办",
@@ -116,10 +124,10 @@ const store: ImmerStateCreator<TodoTreeStore> = (set, get) => ({
     add: async options => {
       const {
         title,
-        id_parent = null,
+        id_parent,
         agent = 1,
       } = validator.add.parse(options);
-      if (id_parent !== null && !get().todotree.nodesById[id_parent]) {
+      if (!get().todotree.nodesById[id_parent]) {
         throw new Error(`TodoTree parent does not exist: ${String(id_parent)}`);
       }
       let id = 0;
@@ -142,7 +150,10 @@ const store: ImmerStateCreator<TodoTreeStore> = (set, get) => ({
       if (!nodeValue) {
         throw new Error(`TodoTree node does not exist: ${String(optionsValue.id)}`);
       }
-      if (optionsValue.title !== undefined && nodeValue.id_parent === null) {
+      if (nodeValue.id === 1) {
+        throw new Error("TodoTree root node cannot be changed.");
+      }
+      if (optionsValue.title !== undefined && nodeValue.id_parent === 1) {
         validator.workspacePath.parse(optionsValue.title);
       }
       set(state => {

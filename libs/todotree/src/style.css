@@ -14,18 +14,76 @@ main {
   padding: 24px;
 }
 
-.workspace-add {
-  display: flex;
-  gap: 8px;
+.todo-tree-title {
+  display: inline-flex;
+  gap: 6px;
   align-items: center;
 }
 
-.workspace-add {
-  margin-bottom: 20px;
+.todo-tree-drawer-open {
+  padding: 2px 4px;
+  color: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  opacity: 0;
 }
 
-.drawer-form {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 24px;
+.todo-tree-node-state {
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
+.todo-tree .ant-tree-treenode:hover .todo-tree-drawer-open,
+.todo-tree-drawer-open:focus-visible {
+  opacity: 1;
+}
+
+.drawer-splitter {
+  height: 100%;
+}
+
+.drawer-content {
+  box-sizing: border-box;
+  height: 100%;
+  padding: 16px;
+  overflow: auto;
+}
+
+.drawer-content > :first-child {
+  margin-top: 0;
+}
+
+.drawer-content > :last-child {
+  margin-bottom: 0;
+}
+
+.drawer-content pre {
+  padding: 12px;
+  overflow: auto;
+  background: #f5f5f5;
+  border-radius: 6px;
+}
+
+.drawer-content code {
+  font-family: Consolas, monospace;
+}
+
+.drawer-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+  height: 100%;
+  padding: 16px;
+}
+
+.drawer-panel .ant-input {
+  flex: 1;
+  resize: none;
+}
+
+.drawer-panel .ant-btn {
+  align-self: flex-end;
 }

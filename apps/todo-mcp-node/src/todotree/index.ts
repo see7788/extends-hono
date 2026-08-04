@@ -26,8 +26,9 @@ const contactSend = async (id: number) => {
     if (!parent) throw new Error(`TodoTree parent does not exist: ${String(node.id_parent)}`);
     node = parent;
   }
-  const workspacePath = path[0]?.title;
-  if (!workspacePath) throw new Error(`TodoTree root does not exist: ${String(id)}`);
+  const workspace = path[1];
+  const workspacePath = workspace?.title;
+  if (!workspacePath) throw new Error(`TodoTree workspace does not exist: ${String(id)}`);
   const contact = await workspaceAiContact.card(workspacePath);
   const remoteDebuggingPort = Number(/remoteDebuggingPort (\d+)/.exec(contact)?.[1]);
   if (!Number.isInteger(remoteDebuggingPort) || remoteDebuggingPort < 1) {
@@ -46,7 +47,7 @@ const contactSend = async (id: number) => {
         .filter(child => child.id_parent === nodeId)
         .forEach(child => lineAppend(child.id, depth + 1));
     };
-    lineAppend(path[0]!.id, 0);
+    lineAppend(workspace.id, 0);
   }
   const result = await workspaceAiContact.input({
     workspacePath,
@@ -80,7 +81,7 @@ export default new Register({ namespace: pkg.name })
           const fromMcp = typeof context.env === "object"
             && context.env !== null
             && "mcpServer" in context.env;
-          const result = fromMcp || node?.id_parent === null
+          const result = fromMcp || node?.id_parent === 1
             ? undefined
             : await contactSend(id);
           return context.json({
@@ -96,7 +97,7 @@ export default new Register({ namespace: pkg.name })
       },
     ),
     validator.add,
-    "创建根任务或指定父任务下的子任务；页面调用时同时把新节点发送给对应工作区 Codex。",
+    "在固定根节点或指定父任务下创建节点；页面调用时同时把新任务发送给对应工作区 Codex。",
     {
       readOnlyHint: false,
       destructiveHint: false,

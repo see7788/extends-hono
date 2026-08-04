@@ -1,70 +1,80 @@
-import { Button, Input, Select, Tree, type TreeDataNode } from "antd";
-import { hc } from "hono/client";
-import { useState } from "react";
-import type { TodoMcpApi } from "todo-mcp-node/src/routers.ts";
+import { FormOutlined } from "@ant-design/icons";
+import { Tree, type TreeDataNode } from "antd";
+import { useMemo, useState } from "react";
+import { Outlet, useNavigate } from "react-router-dom";
 import type { TodoTreeStore } from "todo-mcp-node/src/todotree/store.ts";
 import store from "../store.ts";
-import NodeDrawer from "./Drawer.tsx";
 
 type TodoTreeNode = TodoTreeStore["todotree"]["nodesById"][number];
-const client = hc<TodoMcpApi>(location.origin);
 
 export default function App() {
   const todotree = store(state => state.todotree);
-  const [drawerNodeId, drawerNodeIdSet] = useState<number>();
-  const treeNode = (node: TodoTreeNode): TreeDataNode => {
-    const children = Object.values(todotree.nodesById)
-      .filter(child => child.id_parent === node.id)
-      .sort((left, right) => left.id - right.id)
-      .map(treeNode);
+  const navigate = useNavigate();
+  const [loadedNodeIds, loadedNodeIdsSet] = useState<ReadonlySet<number>>(new Set());
+  const nodesByParentId = useMemo(() => {
+    const nodes = new Map<number | null, TodoTreeNode[]>();
+    for (const node of Object.values(todotree.nodesById)) {
+      const siblings = nodes.get(node.id_parent) ?? [];
+      siblings.push(node);
+      nodes.set(node.id_parent, siblings);
+    }
+    for (const siblings of nodes.values()) {
+      siblings.sort((left, right) => left.id - right.id);
+    }
+    return nodes;
+  }, [todotree.nodesById]);
+  const nodeChildren = (id: number) => nodesByParentId.get(id) ?? [];
+  const treeNode = (node: TodoTreeNode, childrenShow = loadedNodeIds.has(node.id)): TreeDataNode => {
+    const children = nodeChildren(node.id);
+    const drawerAvailable = node.id !== 1 && children.length === 0;
+    const drawerOpen = () => void navigate(`/${String(node.id)}`);
     return {
       key: node.id,
+      isLeaf: children.length === 0,
       title: (
-        <span
-          onContextMenu={children.length === 0 ? event => {
-            event.preventDefault();
-            drawerNodeIdSet(node.id);
-          } : undefined}
-        >
-          #{node.id} {node.title}
+        <span className="todo-tree-title" onDoubleClick={drawerAvailable ? drawerOpen : undefined}>
+          <span>{node.title.slice(0, 60)}</span>
+          {drawerAvailable && (
+            <span className="todo-tree-node-state">
+              {todotree.nodeStatusLabelByStatus[node.status]}
+              {" · "}
+              {todotree.nodeAgentLabelByAgent[node.agent]}
+            </span>
+          )}
+          {drawerAvailable && (
+            <button
+              aria-label="打开节点抽屉"
+              className="todo-tree-drawer-open"
+              onClick={event => {
+                event.stopPropagation();
+                drawerOpen();
+              }}
+              type="button"
+            >
+              <FormOutlined />
+            </button>
+          )}
         </span>
       ),
-      children,
+      children: childrenShow ? children.map(child => treeNode(child)) : undefined,
     };
   };
-  const treeData = Object.values(todotree.nodesById)
-    .filter(node => node.id_parent === null)
-    .sort((left, right) => left.id - right.id)
-    .map(treeNode);
+  const root = todotree.nodesById[1];
+  const treeData = root ? [treeNode(root, true)] : [];
 
   return (
     <main>
-      <h1>TodoTree</h1>
-      <p>从任意节点直接与对应工作区 Codex 沟通</p>
-      <form
-        className="workspace-add"
-        onSubmit={async event => {
-          event.preventDefault();
-          const form = event.currentTarget;
-          const title = String(new FormData(form).get("title") ?? "").trim();
-          if (!title) return;
-          const response = await client.todotree.add.$post({
-            json: { id_parent: null, title },
-          });
-          if (!response.ok) throw new Error(await response.text());
-          form.reset();
-        }}
-      >
-        <Input name="title" aria-label="工作区绝对路径" placeholder="F:\\pro\\项目目录" />
-        <Button htmlType="submit" type="primary">添加工作区</Button>
-      </form>
       <Tree
         blockNode
-        expandedKeys={Object.keys(todotree.nodesById).map(Number)}
+        className="todo-tree"
+        defaultExpandedKeys={[1]}
+        loadData={async node => {
+          loadedNodeIdsSet(current => new Set(current).add(Number(node.key)));
+        }}
         selectable={false}
         treeData={treeData}
       />
-      <NodeDrawer nodeId={drawerNodeId} onClose={() => drawerNodeIdSet(undefined)} />
+      <Outlet />
     </main>
   );
 }

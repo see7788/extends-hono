@@ -7,12 +7,16 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ant-design/icons": "6.3.2",
     "antd": "^6.3.7",
     "extends-antd": "workspace:*",
     "hono": "4.12.30",
     "immer": "10.2.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "7.18.2",
+    "remark-gfm": "^4.0.1",
     "todo-mcp-node": "workspace:*",
     "zustand": "5.0.13"
   },
