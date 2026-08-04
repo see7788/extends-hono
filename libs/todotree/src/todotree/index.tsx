@@ -13,6 +13,7 @@ export default function App() {
   const todotreeRecent = store(state => state.todotreeRecent);
   const navigate = useNavigate();
   const [expandedNodeIds, expandedNodeIdsSet] = useState<ReadonlySet<number>>(new Set());
+  const [revealedNodeId, revealedNodeIdSet] = useState<number>();
   const [hoveredNodeId, hoveredNodeIdSet] = useState<number>();
   useEffect(() => store.getState().todotreeActions.connect(), []);
   const nodesById = todotree?.treeData.nodesById;
@@ -47,10 +48,16 @@ export default function App() {
       title: (
         <Flex
           align="center"
+          data-todotree-node-id={node.id}
           gap="small"
           onDoubleClick={drawerAvailable ? drawerOpen : undefined}
           onMouseEnter={() => hoveredNodeIdSet(node.id)}
           onMouseLeave={() => hoveredNodeIdSet(undefined)}
+          style={revealedNodeId === node.id ? {
+            background: token.colorPrimaryBg,
+            borderRadius: token.borderRadiusSM,
+            boxShadow: `0 0 0 1px ${token.colorPrimary}`,
+          } : undefined}
         >
           {drawerAvailable && hoveredNodeId !== node.id && (
             <Typography.Text style={{ whiteSpace: "nowrap" }} type="secondary">
@@ -91,7 +98,12 @@ export default function App() {
       current = parent;
     }
     expandedNodeIdsSet(expanded);
+    revealedNodeIdSet(id);
     store.getState().todotreeActions.nodeRead(id);
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`[data-todotree-node-id="${String(id)}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
   };
 
   return (
