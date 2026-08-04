@@ -29,7 +29,8 @@ const node = z.object({
   status,
   agent,
 });
-const add = node.omit({ id: true }).extend({
+const nodeCreate = node.omit({ id: true, id_parent: true });
+const add = nodeCreate.extend({
   id_parent: z.number().int().positive(),
 }).superRefine((value, context) => {
   if (value.id_parent === 1 && !absolutePath.safeParse(value.title).success) {
@@ -39,6 +40,29 @@ const add = node.omit({ id: true }).extend({
       message: "TodoTree project title must be an absolute path.",
     });
   }
+});
+type BatchNode = z.infer<typeof nodeCreate> & { children?: BatchNode[] };
+const batchNode: z.ZodType<BatchNode> = nodeCreate.extend({
+  children: z.lazy(() => z.array(batchNode)).optional(),
+});
+const batch = z.object({
+  id_parent: z.number().int().positive(),
+  nodes: z.array(batchNode).min(1).max(500),
+}).superRefine((value, context) => {
+  let count = 0;
+  const nodesCount = (nodes: BatchNode[], depth: number) => {
+    if (depth > 100) {
+      context.addIssue({ code: "custom", message: "TodoTree batch depth cannot exceed 100." });
+      return;
+    }
+    count += nodes.length;
+    if (count > 500) {
+      context.addIssue({ code: "custom", message: "TodoTree batch cannot exceed 500 nodes." });
+      return;
+    }
+    for (const nodeValue of nodes) nodesCount(nodeValue.children ?? [], depth + 1);
+  };
+  nodesCount(value.nodes, 1);
 });
 const setValue = z.object({
   id: z.number().int().positive(),
@@ -80,6 +104,7 @@ const nodeSearch = projectResolve.extend({
 
 export const validator = {
   add,
+  batch,
   conversationInit,
   del,
   nodeSearch,
@@ -350,27 +375,29 @@ const projectTreeRead = (projectId: number, rows = subtreeNodes.all(projectId)):
 };
 const nodePlacementValidate = (parentNode: TodoTreeNode, nodeValue: z.infer<typeof add>) => {
   if (nodeValue.template === "project") {
-    throw new Error("project 节点只能由项目初始化接口生产。");
+    throw new HTTPException(409, { message: "project 节点只能由项目初始化接口生产。" });
   }
   if (nodeValue.template === "file") {
     if (parentNode.template !== "project") {
-      throw new Error("file 节点必须直接属于 project 节点。");
+      throw new HTTPException(409, { message: "file 节点必须直接属于 project 节点。" });
     }
     const path = nodeValue.title.replaceAll("\\", "/");
     if (/^(?:[A-Za-z]:\/|\/)/.test(path) || path.split("/").includes("..")) {
-      throw new Error("file 节点必须使用项目内完整相对文件路径。");
+      throw new HTTPException(409, { message: "file 节点必须使用项目内完整相对文件路径。" });
     }
   }
   if (nodeValue.template === "typescript") {
     if (parentNode.template !== "file") {
-      throw new Error("typescript 节点必须直接属于 file 节点。");
+      throw new HTTPException(409, { message: "typescript 节点必须直接属于 file 节点。" });
     }
     if (!nodeValue.title.split("\n").some(line => line.trimStart().startsWith("// "))) {
-      throw new Error("typescript 节点必须在签名后用 // 表达具体用途与直接消费链。");
+      throw new HTTPException(409, {
+        message: "typescript 节点必须在签名后用 // 表达具体用途与直接消费链。",
+      });
     }
   }
   if (parentNode.template === "file" && nodeValue.template !== "typescript") {
-    throw new Error("file 节点只能生产 typescript 公开成员节点。");
+    throw new HTTPException(409, { message: "file 节点只能生产 typescript 公开成员节点。" });
   }
 };
 
@@ -380,7 +407,7 @@ const store = {
     const parentNode = nodeRead(optionsValue.id_parent);
     nodePlacementValidate(parentNode, optionsValue);
     if (optionsValue.status !== 7 && completedAncestor.get(parentNode.id)) {
-      throw new Error("已完成节点的后代必须保持已完成状态。");
+      throw new HTTPException(409, { message: "已完成节点的后代必须保持已完成状态。" });
     }
     const result = nodeInsert.run(
       optionsValue.id_parent,
@@ -390,6 +417,19 @@ const store = {
       optionsValue.agent,
     );
     return nodeRead(Number(result.lastInsertRowid));
+  }),
+  batch: database.transaction((options: z.input<typeof validator.batch>) => {
+    const optionsValue = validator.batch.parse(options);
+    const result: TodoTreeNode[] = [];
+    const nodesAdd = (idParent: number, nodes: BatchNode[]) => {
+      for (const { children = [], ...nodeValue } of nodes) {
+        const inserted = store.add({ ...nodeValue, id_parent: idParent });
+        result.push(inserted);
+        nodesAdd(inserted.id, children);
+      }
+    };
+    nodesAdd(optionsValue.id_parent, optionsValue.nodes);
+    return result;
   }),
   del: database.transaction((id: number) => {
     const { id: idValue } = validator.del.parse({ id });

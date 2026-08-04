@@ -66,6 +66,26 @@ export default new Register({
     },
   )
   .register(
+    "/node/batch",
+    new Hono().post(
+      "/",
+      zValidator("json", validator.batch),
+      async context => {
+        const nodes = store.batch(context.req.valid("json"));
+        await eventSend({ event: "tree", data: store.tree() });
+        return context.json(nodes, 200);
+      },
+    ),
+    validator.batch,
+    "人类与 AI 共用：在一个 SQLite transaction 中递归新增一批节点；任一节点失败时整批不写入。",
+    {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  )
+  .register(
     "/node/del",
     new Hono().post(
       "/",
