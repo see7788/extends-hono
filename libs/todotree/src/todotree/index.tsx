@@ -75,7 +75,6 @@ export default function App() {
       { count: attention.runningCount, status: 4 as const },
       { count: attention.blockedCount, status: 8 as const },
     ].filter(value => value.count > 0) : [];
-    const attentionCount = attentionStatuses.reduce((count, value) => count + value.count, 0);
     return {
       key: node.id,
       isLeaf: children.length === 0,
@@ -114,15 +113,16 @@ export default function App() {
             </Flex>
           )}
           <Title {...node} />
-          {drawerAvailable && hoveredNodeId !== node.id && node.template === "project" && (
+          {drawerAvailable
+            && hoveredNodeId !== node.id
+            && node.template === "project"
+            && attentionStatuses.length === 0
+            && (
             <Typography.Text style={{ whiteSpace: "nowrap" }} type="secondary">
               {statusLabelRead(node.status)}
             </Typography.Text>
           )}
-          {attentionCount > 0 && (
-            <Typography.Text type="secondary">子项 {attentionCount}</Typography.Text>
-          )}
-          {attentionStatuses.filter(value => value.status !== node.status).map(value => (
+          {attentionStatuses.map(value => (
             <Typography.Text
               key={value.status}
               style={{
