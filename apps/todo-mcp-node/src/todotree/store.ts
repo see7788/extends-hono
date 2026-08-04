@@ -82,13 +82,23 @@ const move = z.object({
 const tree = z.object({
   nodesById: z.record(z.string(), node),
 });
+const projectAttention = z.object({
+  project: node,
+  decisionCount: z.number().int().nonnegative(),
+  decisionIds: z.array(z.number().int().positive()),
+  blockedCount: z.number().int().nonnegative(),
+  runningCount: z.number().int().nonnegative(),
+  todoCount: z.number().int().nonnegative(),
+});
 const treeState = z.object({
   treeData: tree,
   treeDataMaxId: z.number().int().positive(),
+  projectAttentionById: z.record(z.string(), projectAttention),
 });
 const projectTree = z.object({
   projectId: z.number().int().positive(),
   nodesById: z.record(z.string(), node),
+  attention: projectAttention,
 });
 const projectRelation = z.object({
   sourceProjectId: z.number().int().positive(),
@@ -141,6 +151,7 @@ export const validator = {
 export type TodoTreeNode = z.infer<typeof node>;
 export type TodoTreeState = z.infer<typeof treeState>;
 export type TodoTreeProject = z.infer<typeof projectTree>;
+export type ProjectAttention = z.infer<typeof projectAttention>;
 
 const projectPath = fileURLToPath(new URL("../../", import.meta.url));
 const projectPathValue = process.platform === "win32"
@@ -442,14 +453,75 @@ const projectNodeAssert = (projectId: number, nodeId: number) => {
     throw new Error("指定节点不属于当前项目。");
   }
 };
+const projectAttentionByIdRead = (nodes: TodoTreeNode[]) => {
+  const nodesById = new Map(nodes.map(nodeValue => [nodeValue.id, nodeValue]));
+  const projectIdByNodeId = new Map<number, number>();
+  const attentionByProjectId: Record<number, ProjectAttention> = {};
+  for (const nodeValue of nodes) {
+    if (nodeValue.id_parent !== 1 || nodeValue.template !== "project") continue;
+    projectIdByNodeId.set(nodeValue.id, nodeValue.id);
+    attentionByProjectId[nodeValue.id] = {
+      project: nodeValue,
+      decisionCount: 0,
+      decisionIds: [],
+      blockedCount: 0,
+      runningCount: 0,
+      todoCount: 0,
+    };
+  }
+  const projectIdRead = (nodeValue: TodoTreeNode) => {
+    const path: number[] = [];
+    let current: TodoTreeNode | undefined = nodeValue;
+    while (current && !projectIdByNodeId.has(current.id)) {
+      path.push(current.id);
+      current = current.id_parent === null ? undefined : nodesById.get(current.id_parent);
+    }
+    const projectId = current === undefined ? undefined : projectIdByNodeId.get(current.id);
+    if (projectId !== undefined) {
+      for (const id of path) projectIdByNodeId.set(id, projectId);
+    }
+    return projectId;
+  };
+  for (const nodeValue of nodes) {
+    const projectId = projectIdRead(nodeValue);
+    if (projectId === undefined || nodeValue.id === projectId) continue;
+    const attention = attentionByProjectId[projectId];
+    if (nodeValue.status === 1) attention.decisionIds.push(nodeValue.id);
+    if (nodeValue.status === 8) attention.blockedCount += 1;
+    if (nodeValue.status === 4) attention.runningCount += 1;
+    if (nodeValue.status === 2) attention.todoCount += 1;
+  }
+  for (const attention of Object.values(attentionByProjectId)) {
+    attention.decisionCount = attention.decisionIds.length;
+  }
+  return z.record(z.string(), projectAttention).parse(attentionByProjectId);
+};
 const projectTreeRead = (projectId: number, rows = subtreeNodes.all(projectId)): TodoTreeProject => {
   const nodes = rows.map(databaseNodeRead);
+  const attention = projectAttentionByIdRead(
+    subtreeNodes.all(projectId).map(databaseNodeRead),
+  )[projectId];
+  if (!attention) throw new Error(`TodoTree project does not exist: ${String(projectId)}`);
   return projectTree.parse({
     projectId,
     nodesById: Object.fromEntries(nodes.map(nodeValue => [nodeValue.id, nodeValue])),
+    attention,
   });
 };
-const nodePlacementValidate = (parentNode: TodoTreeNode, nodeValue: z.infer<typeof add>) => {
+const decisionPlacementValidate = (parentNode: TodoTreeNode) => {
+  let current: TodoTreeNode | undefined = parentNode;
+  while (current) {
+    if (current.template === "typescript") return;
+    current = current.id_parent === null ? undefined : nodeRead(current.id_parent);
+  }
+  throw new HTTPException(409, {
+    message: "status: 1 决策必须挂在受影响的 typescript 公开成员下面。",
+  });
+};
+const nodePlacementValidate = (
+  parentNode: TodoTreeNode,
+  nodeValue: z.infer<typeof add>,
+) => {
   if (nodeValue.template === "project") {
     throw new HTTPException(409, { message: "project 节点只能由项目初始化接口生产。" });
   }
@@ -474,6 +546,9 @@ const nodePlacementValidate = (parentNode: TodoTreeNode, nodeValue: z.infer<type
   }
   if (parentNode.template === "file" && nodeValue.template !== "typescript") {
     throw new HTTPException(409, { message: "file 节点只能生产 typescript 公开成员节点。" });
+  }
+  if (nodeValue.status === 1) {
+    decisionPlacementValidate(parentNode);
   }
 };
 
@@ -556,6 +631,12 @@ const store = {
       ...currentNode,
       ...optionsValue,
     });
+    if (nextNode.status === 1) {
+      if (nextNode.id_parent === null) {
+        throw new HTTPException(409, { message: "TodoTree root cannot be a decision." });
+      }
+      decisionPlacementValidate(nodeRead(nextNode.id_parent));
+    }
     if (nextNode.status === 7 && unfinishedDescendant.get(nextNode.id)) {
       throw new Error("存在未完成后代时，节点不能设为已完成。");
     }
@@ -629,6 +710,11 @@ const store = {
         )),
     });
   },
+  projectAttention: (value: string) => {
+    const projectNode = projectRead(value);
+    return projectTreeRead(projectNode.id).attention;
+  },
+  projectAttentionList: () => projectAttentionByIdRead(nodesAll.all().map(databaseNodeRead)),
   projectList: () => projectsAll.all().map(databaseNodeRead),
   projectResolve: (value: string) => {
     const projectNode = projectRead(value);
@@ -715,6 +801,7 @@ const store = {
         nodesById: Object.fromEntries(nodes.map(nodeValue => [nodeValue.id, nodeValue])),
       },
       treeDataMaxId,
+      projectAttentionById: projectAttentionByIdRead(nodes),
     });
   },
 };

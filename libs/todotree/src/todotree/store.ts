@@ -16,6 +16,7 @@ export type TodoTreeStore = {
     nodeRead(id: number): void;
     nodeRecent(node: TodoTreeNode): void;
     nodeSet(node: TodoTreeNode): void;
+    projectAttentionSet(attentionByProjectId: TodoTreeState["projectAttentionById"]): void;
     treeSet(tree: TodoTreeState): void;
   };
 };
@@ -32,6 +33,11 @@ const store: ImmerStateCreator<TodoTreeStore> = (set, get) => ({
       });
       eventSource.addEventListener("add", event => {
         get().todotreeActions.nodeAdd(JSON.parse(event.data) as TodoTreeNode);
+      });
+      eventSource.addEventListener("attention", event => {
+        get().todotreeActions.projectAttentionSet(
+          JSON.parse(event.data) as TodoTreeState["projectAttentionById"],
+        );
       });
       eventSource.addEventListener("del", event => {
         get().todotreeActions.nodeDel(JSON.parse(event.data) as number[]);
@@ -76,6 +82,10 @@ const store: ImmerStateCreator<TodoTreeStore> = (set, get) => ({
         { id: node.id, unread: true },
         ...state.todotreeRecent.filter(recent => recent.id !== node.id),
       ].slice(0, 10);
+    }),
+    projectAttentionSet: attentionByProjectId => set(state => {
+      if (!state.todotree) throw new Error("TodoTree has not been received.");
+      state.todotree.projectAttentionById = attentionByProjectId;
     }),
     treeSet: tree => set(state => {
       state.todotree = tree;

@@ -11,7 +11,7 @@ const eventSend = async ({
   event,
 }: {
   data: unknown;
-  event: "add" | "del" | "node" | "set" | "tree";
+  event: "add" | "attention" | "del" | "node" | "set" | "tree";
 }) => {
   for (const stream of [...streams]) {
     try {
@@ -38,7 +38,9 @@ project/
     └── default: zustand.StateCreator<WebStore>
         // 生产 Web 端协议切片。
 
-错误：把 project、public、feature 等路径片段逐层建立为目录节点，再把 index.ts 或 web.ts 放到目录节点下面；只写签名却省略用途与直接消费链；把私有成员或无消费者的导出写进项目书。`;
+错误：把 project、public、feature 等路径片段逐层建立为目录节点，再把 index.ts 或 web.ts 放到目录节点下面；只写签名却省略用途与直接消费链；把私有成员或无消费者的导出写进项目书。
+
+交流规则：status: 1 只表示需要人类回答的决策，必须处于受影响的 typescript 公开成员后代；AI 应一次性列出当前已知的全部决策。status: 2 只表示 AI 自己的实现待办，不要求人类回复。人类回答后，AI 立即把对应决策改为已完成或已取消。每次回复前调用 project.attention；第一行只写全部待决策 ID，例如“待你决策：#12、#15”，没有待决策时只写“无”。项目根 status 只表达项目生命周期，严禁因存在决策而修改项目根。`;
 
 export default new Register({
   namespace: "todo-mcp-node",
@@ -53,6 +55,7 @@ export default new Register({
         const options = context.req.valid("json");
         const nodeValue = store.add(options);
         await eventSend({ event: "add", data: nodeValue });
+        await eventSend({ event: "attention", data: store.projectAttentionList() });
         return context.json(nodeValue, 200);
       },
     ),
@@ -95,6 +98,7 @@ export default new Register({
         const ids = store.del(id);
         const result = { ids };
         await eventSend({ event: "del", data: ids });
+        await eventSend({ event: "attention", data: store.projectAttentionList() });
         return context.json(result, 200);
       },
     ),
@@ -115,6 +119,7 @@ export default new Register({
       async context => {
         const nodeValue = store.move(context.req.valid("json"));
         await eventSend({ event: "set", data: nodeValue });
+        await eventSend({ event: "attention", data: store.projectAttentionList() });
         return context.json(nodeValue, 200);
       },
     ),
@@ -136,6 +141,7 @@ export default new Register({
         const options = context.req.valid("json");
         const nodeValue = store.set(options);
         await eventSend({ event: "set", data: nodeValue });
+        await eventSend({ event: "attention", data: store.projectAttentionList() });
         return context.json(nodeValue, 200);
       },
     ),
@@ -220,6 +226,22 @@ export default new Register({
     {
       readOnlyHint: false,
       destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  )
+  .mcpAdd(
+    "/project/attention",
+    new Hono().post(
+      "/",
+      zValidator("json", validator.projectResolve),
+      context => context.json(store.projectAttention(context.req.valid("json").workspacePath), 200),
+    ),
+    validator.projectResolve,
+    "实时读取当前项目后代节点派生的决策、阻塞、运行中和待办数量。项目根状态不参与计数，也不会被改写。AI 每次回复前调用本接口：decisionIds 非空时第一行列出全部待决策 ID，否则第一行只写“无”。",
+    {
+      readOnlyHint: true,
+      destructiveHint: false,
       idempotentHint: true,
       openWorldHint: false,
     },

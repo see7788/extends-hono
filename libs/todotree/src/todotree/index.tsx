@@ -1,5 +1,5 @@
-import { FormOutlined } from "@ant-design/icons";
-import { Button, Flex, theme, Tree, Typography, type TreeDataNode } from "antd";
+import { FilterOutlined, FormOutlined } from "@ant-design/icons";
+import { Button, Flex, FloatButton, theme, Tree, Typography, type TreeDataNode } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { statusOptions } from "todo-mcp-node/src/todotree/contract.ts";
@@ -15,6 +15,7 @@ export default function App() {
   const [expandedNodeIds, expandedNodeIdsSet] = useState<ReadonlySet<number>>(new Set());
   const [revealedNodeId, revealedNodeIdSet] = useState<number>();
   const [hoveredNodeId, hoveredNodeIdSet] = useState<number>();
+  const [decisionFilter, decisionFilterSet] = useState(false);
   useEffect(() => store.getState().todotreeActions.connect(), []);
   const nodesById = todotree?.treeData.nodesById;
   const statusLabelRead = (status: TodoTreeNode["status"]) => {
@@ -34,14 +35,32 @@ export default function App() {
     }
     return nodes;
   }, [nodesById]);
-  const nodeChildren = (id: number) => nodesByParentId.get(id) ?? [];
+  const decisionNodeIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const attention of Object.values(todotree?.projectAttentionById ?? {})) {
+      for (const decisionId of attention.decisionIds) {
+        let current = nodesById?.[decisionId];
+        while (current) {
+          ids.add(current.id);
+          current = current.id_parent === null ? undefined : nodesById?.[current.id_parent];
+        }
+      }
+    }
+    return ids;
+  }, [nodesById, todotree?.projectAttentionById]);
+  const nodeChildren = (id: number) => (nodesByParentId.get(id) ?? []).filter(
+    nodeValue => !decisionFilter || decisionNodeIds.has(nodeValue.id),
+  );
   const treeNode = (
     node: TodoTreeNode,
-    childrenShow = expandedNodeIds.has(node.id),
+    childrenShow = decisionFilter || expandedNodeIds.has(node.id),
   ): TreeDataNode => {
     const children = nodeChildren(node.id);
     const drawerAvailable = node.id !== 1;
     const drawerOpen = () => void navigate(`/${String(node.id)}`);
+    const attention = node.template === "project"
+      ? todotree?.projectAttentionById[node.id]
+      : undefined;
     return {
       key: node.id,
       isLeaf: children.length === 0,
@@ -59,7 +78,7 @@ export default function App() {
             boxShadow: `0 0 0 1px ${token.colorPrimary}`,
           } : undefined}
         >
-          {drawerAvailable && hoveredNodeId !== node.id && (
+          {drawerAvailable && hoveredNodeId !== node.id && node.template !== "project" && (
             <Typography.Text style={{ whiteSpace: "nowrap" }} type="secondary">
               {statusLabelRead(node.status)}
             </Typography.Text>
@@ -80,6 +99,16 @@ export default function App() {
             </Flex>
           )}
           <Title {...node} />
+          {drawerAvailable && hoveredNodeId !== node.id && node.template === "project" && (
+            <Typography.Text style={{ whiteSpace: "nowrap" }} type="secondary">
+              {statusLabelRead(node.status)}
+            </Typography.Text>
+          )}
+          {attention && attention.decisionCount > 0 && (
+            <Typography.Text style={{ color: token.colorSuccess, whiteSpace: "nowrap" }}>
+              待决策 {attention.decisionCount}
+            </Typography.Text>
+          )}
         </Flex>
       ),
       children: childrenShow ? children.map(child => treeNode(child)) : undefined,
@@ -121,8 +150,9 @@ export default function App() {
       {root && (
         <Tree
           blockNode
-          expandedKeys={[...expandedNodeIds]}
+          expandedKeys={[...(decisionFilter ? decisionNodeIds : expandedNodeIds)]}
           onExpand={keys => {
+            if (decisionFilter) return;
             expandedNodeIdsSet(new Set(keys.map(Number)));
           }}
           selectable={false}
@@ -150,6 +180,23 @@ export default function App() {
           </Button>
         ))}
       </Flex>
+      <FloatButton
+        icon={<FilterOutlined />}
+        onClick={() => {
+          if (decisionFilter) {
+            decisionFilterSet(false);
+            expandedNodeIdsSet(new Set());
+            revealedNodeIdSet(undefined);
+            return;
+          }
+          decisionFilterSet(true);
+        }}
+        style={decisionFilter ? {
+          background: token.colorSuccess,
+          color: token.colorTextLightSolid,
+        } : undefined}
+        tooltip={decisionFilter ? "显示全部并折叠" : "只看待决策"}
+      />
       <Outlet />
     </Flex>
   );
