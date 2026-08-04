@@ -4,6 +4,7 @@ import { existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { contractValidator } from "./contract.ts";
 
@@ -323,7 +324,16 @@ const projectRead = (value: string) => {
   const project = projectsAll.all()
     .map(databaseNodeRead)
     .find(nodeValue => projectContainsPath(nodeValue.title, workspacePathValue));
-  if (!project) throw new Error("当前工作路径尚未登记为具体项目或其子目录。");
+  if (!project) {
+    if (existsSync(join(workspacePathValue, "pnpm-workspace.yaml"))) {
+      throw new HTTPException(409, {
+        message: "当前工作路径是 pnpm workspace 容器，不是具体项目；请传入当前任务对应的具体项目绝对路径。",
+      });
+    }
+    throw new HTTPException(404, {
+      message: "当前工作路径尚未登记为具体项目或其子目录。",
+    });
+  }
   return project;
 };
 const projectNodeAssert = (projectId: number, nodeId: number) => {
