@@ -176,6 +176,54 @@ export default new Register({
       openWorldHint: false,
     },
   )
+  .register(
+    "/workspace/tree",
+    new Hono().post(
+      "/",
+      zValidator("json", validator.workspaceTree),
+      context => context.json(store.workspaceTree(context.req.valid("json").workspacePath), 200),
+    ),
+    validator.workspaceTree,
+    "读取当前 Workspace 下全部已登记具体项目的完整项目书，以及与这些项目相连的跨库有向关系。",
+    {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  )
+  .register(
+    "/workspace/relation/add",
+    new Hono().post(
+      "/",
+      zValidator("json", validator.projectRelation),
+      context => context.json(store.workspaceRelationAdd(context.req.valid("json")), 200),
+    ),
+    validator.projectRelation,
+    "人类与 AI 共用：在两个已登记具体项目之间新增一条有向跨库关系。",
+    {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  )
+  .register(
+    "/workspace/relation/del",
+    new Hono().post(
+      "/",
+      zValidator("json", validator.projectRelation),
+      context => context.json(store.workspaceRelationDel(context.req.valid("json")), 200),
+    ),
+    validator.projectRelation,
+    "人类与 AI 共用：删除两个已登记具体项目之间的一条有向跨库关系。",
+    {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  )
   .mcpAdd(
     "/project/resolve",
     new Hono().post(

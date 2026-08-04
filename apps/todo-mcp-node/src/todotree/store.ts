@@ -90,6 +90,21 @@ const projectTree = z.object({
   projectId: z.number().int().positive(),
   nodesById: z.record(z.string(), node),
 });
+const projectRelation = z.object({
+  sourceProjectId: z.number().int().positive(),
+  sourceProjectPath: absolutePath,
+  targetProjectId: z.number().int().positive(),
+  targetProjectPath: absolutePath,
+});
+const projectRelationInput = z.object({
+  sourceProjectPath: absolutePath,
+  targetProjectPath: absolutePath,
+});
+const workspaceTree = z.object({
+  workspacePath: absolutePath,
+  projectsById: z.record(z.string(), projectTree),
+  relations: z.array(projectRelation),
+});
 const projectResolve = z.object({
   workspacePath: currentWorkspacePath,
 });
@@ -116,9 +131,11 @@ export const validator = {
   move,
   nodeSearch,
   projectRegister: z.object({ projectPath: currentWorkspacePath }),
+  projectRelation: projectRelationInput,
   projectResolve,
   projectNodeRead: del.extend({ workspacePath: currentWorkspacePath }),
   set: setValue,
+  workspaceTree: projectResolve,
 };
 
 export type TodoTreeNode = z.infer<typeof node>;
@@ -150,6 +167,12 @@ database.exec(`
   );
   CREATE INDEX IF NOT EXISTS todotree_node_id_parent
     ON todotree_node(id_parent);
+  CREATE TABLE IF NOT EXISTS todotree_project_relation (
+    source_project_id INTEGER NOT NULL REFERENCES todotree_node(id) ON DELETE CASCADE,
+    target_project_id INTEGER NOT NULL REFERENCES todotree_node(id) ON DELETE CASCADE,
+    PRIMARY KEY (source_project_id, target_project_id),
+    CHECK (source_project_id <> target_project_id)
+  );
   INSERT INTO todotree_node (id, id_parent, title, template, status, agent)
     SELECT 1, NULL, 'TodoTree', 'project', 4, 1
     WHERE NOT EXISTS (SELECT 1 FROM todotree_node);
@@ -171,6 +194,37 @@ const projectsAll = database.prepare(`
   FROM todotree_node
   WHERE id_parent = 1 AND template = 'project'
   ORDER BY length(title) DESC, id
+`);
+const projectRelationByProjects = database.prepare(`
+  SELECT
+    relation.source_project_id AS sourceProjectId,
+    source.title AS sourceProjectPath,
+    relation.target_project_id AS targetProjectId,
+    target.title AS targetProjectPath
+  FROM todotree_project_relation AS relation
+  JOIN todotree_node AS source ON source.id = relation.source_project_id
+  JOIN todotree_node AS target ON target.id = relation.target_project_id
+  WHERE relation.source_project_id = ? AND relation.target_project_id = ?
+`);
+const projectRelationsAll = database.prepare(`
+  SELECT
+    relation.source_project_id AS sourceProjectId,
+    source.title AS sourceProjectPath,
+    relation.target_project_id AS targetProjectId,
+    target.title AS targetProjectPath
+  FROM todotree_project_relation AS relation
+  JOIN todotree_node AS source ON source.id = relation.source_project_id
+  JOIN todotree_node AS target ON target.id = relation.target_project_id
+  ORDER BY relation.source_project_id, relation.target_project_id
+`);
+const projectRelationInsert = database.prepare(`
+  INSERT INTO todotree_project_relation (source_project_id, target_project_id)
+  VALUES (?, ?)
+  ON CONFLICT (source_project_id, target_project_id) DO NOTHING
+`);
+const projectRelationDelete = database.prepare(`
+  DELETE FROM todotree_project_relation
+  WHERE source_project_id = ? AND target_project_id = ?
 `);
 const nodesAll = database.prepare(`
   SELECT id, id_parent, title, template, status, agent
@@ -373,6 +427,16 @@ const projectRead = (value: string) => {
   }
   return project;
 };
+const projectExactRead = (value: string) => {
+  const path = workspacePathRead(value);
+  const row = projectByPath.get(path);
+  if (!row) {
+    throw new HTTPException(404, {
+      message: `TodoTree project is not registered: ${path}`,
+    });
+  }
+  return databaseNodeRead(row);
+};
 const projectNodeAssert = (projectId: number, nodeId: number) => {
   if (!projectContainsNode.get(projectId, nodeId)) {
     throw new Error("指定节点不属于当前项目。");
@@ -522,6 +586,49 @@ const store = {
       : nodeRead(Number(nodeInsert.run(1, path, "project", 4, 1).lastInsertRowid));
     return projectTreeRead(projectNode.id);
   }),
+  workspaceRelationAdd: database.transaction((options: z.input<typeof validator.projectRelation>) => {
+    const optionsValue = validator.projectRelation.parse(options);
+    const sourceProject = projectExactRead(optionsValue.sourceProjectPath);
+    const targetProject = projectExactRead(optionsValue.targetProjectPath);
+    if (sourceProject.id === targetProject.id) {
+      throw new HTTPException(409, { message: "TodoTree project relation requires two projects." });
+    }
+    projectRelationInsert.run(sourceProject.id, targetProject.id);
+    return projectRelation.parse(projectRelationByProjects.get(sourceProject.id, targetProject.id));
+  }),
+  workspaceRelationDel: database.transaction((options: z.input<typeof validator.projectRelation>) => {
+    const optionsValue = validator.projectRelation.parse(options);
+    const sourceProject = projectExactRead(optionsValue.sourceProjectPath);
+    const targetProject = projectExactRead(optionsValue.targetProjectPath);
+    const relation = projectRelationByProjects.get(sourceProject.id, targetProject.id);
+    if (!relation) throw new HTTPException(404, { message: "TodoTree project relation does not exist." });
+    projectRelationDelete.run(sourceProject.id, targetProject.id);
+    return projectRelation.parse(relation);
+  }),
+  workspaceTree: (value: string) => {
+    const workspacePath = workspacePathRead(value);
+    const projects = projectsAll.all()
+      .map(databaseNodeRead)
+      .filter(project => projectContainsPath(workspacePath, project.title));
+    if (projects.length === 0) {
+      throw new HTTPException(404, {
+        message: "当前 Workspace 内没有已登记的具体项目。",
+      });
+    }
+    const projectIds = new Set(projects.map(project => project.id));
+    return workspaceTree.parse({
+      workspacePath,
+      projectsById: Object.fromEntries(projects.map(project => [
+        project.id,
+        projectTreeRead(project.id),
+      ])),
+      relations: projectRelationsAll.all()
+        .map(value => projectRelation.parse(value))
+        .filter(relation => (
+          projectIds.has(relation.sourceProjectId) || projectIds.has(relation.targetProjectId)
+        )),
+    });
+  },
   projectList: () => projectsAll.all().map(databaseNodeRead),
   projectResolve: (value: string) => {
     const projectNode = projectRead(value);
