@@ -1,5 +1,5 @@
 import { FormOutlined } from "@ant-design/icons";
-import { Tree, type TreeDataNode } from "antd";
+import { Button, Flex, Tree, Typography, type TreeDataNode } from "antd";
 import { useMemo, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import type { TodoTreeStore } from "todo-mcp-node/src/todotree/store.ts";
@@ -11,6 +11,7 @@ export default function App() {
   const todotree = store(state => state.todotree);
   const navigate = useNavigate();
   const [loadedNodeIds, loadedNodeIdsSet] = useState<ReadonlySet<number>>(new Set());
+  const [hoveredNodeId, hoveredNodeIdSet] = useState<number>();
   const nodesByParentId = useMemo(() => {
     const nodes = new Map<number | null, TodoTreeNode[]>();
     for (const node of Object.values(todotree.nodesById)) {
@@ -32,29 +33,35 @@ export default function App() {
       key: node.id,
       isLeaf: children.length === 0,
       title: (
-        <span className="todo-tree-title" onDoubleClick={drawerAvailable ? drawerOpen : undefined}>
-          <span>{node.title.slice(0, 60)}</span>
+        <Flex
+          align="center"
+          gap="small"
+          onDoubleClick={drawerAvailable ? drawerOpen : undefined}
+          onMouseEnter={() => hoveredNodeIdSet(node.id)}
+          onMouseLeave={() => hoveredNodeIdSet(undefined)}
+        >
           {drawerAvailable && (
-            <span className="todo-tree-node-state">
-              {todotree.nodeStatusLabelByStatus[node.status]}
-              {" · "}
+            <Typography.Text type="secondary">
+              {node.status === undefined
+                ? undefined
+                : `${todotree.nodeStatusLabelByStatus[node.status]} · `}
               {todotree.nodeAgentLabelByAgent[node.agent]}
-            </span>
+            </Typography.Text>
           )}
-          {drawerAvailable && (
-            <button
+          <Typography.Text>{node.title.slice(0, 60)}</Typography.Text>
+          {drawerAvailable && hoveredNodeId === node.id && (
+            <Button
               aria-label="打开节点抽屉"
-              className="todo-tree-drawer-open"
+              icon={<FormOutlined />}
               onClick={event => {
                 event.stopPropagation();
                 drawerOpen();
               }}
-              type="button"
-            >
-              <FormOutlined />
-            </button>
+              size="small"
+              type="text"
+            />
           )}
-        </span>
+        </Flex>
       ),
       children: childrenShow ? children.map(child => treeNode(child)) : undefined,
     };
@@ -63,10 +70,9 @@ export default function App() {
   const treeData = root ? [treeNode(root, true)] : [];
 
   return (
-    <main>
+    <Flex vertical>
       <Tree
         blockNode
-        className="todo-tree"
         defaultExpandedKeys={[1]}
         loadData={async node => {
           loadedNodeIdsSet(current => new Set(current).add(Number(node.key)));
@@ -75,6 +81,6 @@ export default function App() {
         treeData={treeData}
       />
       <Outlet />
-    </main>
+    </Flex>
   );
 }

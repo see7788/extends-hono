@@ -26,13 +26,14 @@ const node = z.object({
   id: z.number().int().positive(),
   id_parent: z.number().int().positive().nullable(),
   title: z.string().trim().min(1),
-  status,
+  status: status.optional(),
   agent,
 });
 const add = z.object({
   title: z.string().trim().min(1),
   id_parent: z.number().int().positive(),
-  agent: agent.optional(),
+  status: status.optional(),
+  agent,
 }).superRefine((value, context) => {
   if (value.id_parent === 1 && !workspacePath.safeParse(value.title).success) {
     context.addIssue({
@@ -98,7 +99,6 @@ const store: ImmerStateCreator<TodoTreeStore> = (set, get) => ({
         id: 1,
         id_parent: null,
         title: "TodoTree",
-        status: 2,
         agent: 1,
       },
     },
@@ -125,10 +125,17 @@ const store: ImmerStateCreator<TodoTreeStore> = (set, get) => ({
       const {
         title,
         id_parent,
-        agent = 1,
+        status: statusValue,
+        agent,
       } = validator.add.parse(options);
       if (!get().todotree.nodesById[id_parent]) {
         throw new Error(`TodoTree parent does not exist: ${String(id_parent)}`);
+      }
+      if (id_parent === 1) {
+        const workspace = Object.values(get().todotree.nodesById).find(node => (
+          node.id_parent === 1 && node.title === title
+        ));
+        if (workspace) return workspace.id;
       }
       let id = 0;
       set(state => {
@@ -138,7 +145,7 @@ const store: ImmerStateCreator<TodoTreeStore> = (set, get) => ({
           id,
           id_parent,
           title,
-          status: 2,
+          ...(statusValue === undefined ? {} : { status: statusValue }),
           agent,
         };
       });

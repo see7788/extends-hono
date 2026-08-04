@@ -1,4 +1,4 @@
-import { Button, Input, Splitter } from "antd";
+import { Button, Flex, Input, Splitter, Typography } from "antd";
 import { Drawer } from "extends-antd/src/Drawer";
 import { hc } from "hono/client";
 import Markdown from "react-markdown";
@@ -32,30 +32,34 @@ export default function NodeDrawer() {
       title={node ? `#${String(node.id)} ${workspace?.title ?? ""}` : ""}
     >
       {node && (
-        <Splitter className="drawer-splitter" orientation="vertical">
+        <Splitter orientation="vertical">
           <Splitter.Panel defaultSize="50%" min="20%">
-            <article className="drawer-content">
+            <Typography style={{ boxSizing: "border-box", height: "100%", margin: 0, overflow: "auto", padding: 16 }}>
               <Markdown remarkPlugins={[remarkGfm]}>{node.title}</Markdown>
-            </article>
+            </Typography>
           </Splitter.Panel>
           <Splitter.Panel defaultSize="50%" min="20%">
           <form
-            className="drawer-panel"
             onSubmit={async event => {
               event.preventDefault();
               const form = event.currentTarget;
               const title = String(new FormData(form).get("title") ?? "").trim();
               if (!title) return;
               const response = await client["todo-mcp-node"].add.$post({
-                json: { id_parent: node.id, title },
+                json: { id_parent: node.id, title, agent: 1 },
               });
               if (!response.ok) throw new Error(await response.text());
               form.reset();
               void navigate("/");
             }}
+            style={{ boxSizing: "border-box", height: "100%", padding: 16 }}
           >
-            <Input.TextArea name="title" />
-            <Button htmlType="submit" type="primary">发送</Button>
+            <Flex gap="middle" style={{ height: "100%" }} vertical>
+              <Input.TextArea name="title" style={{ flex: 1, resize: "none" }} />
+              <Flex justify="end">
+                <Button htmlType="submit" type="primary">发送</Button>
+              </Flex>
+            </Flex>
           </form>
           </Splitter.Panel>
         </Splitter>
