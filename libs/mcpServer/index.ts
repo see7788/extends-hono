@@ -5,13 +5,8 @@ import type { BlankEnv, MergePath, MergeSchemaPath, Schema } from "hono/types";
 import { inspect } from "node:util";
 import { z } from "zod";
 import aiCallAi from "./mcp/ai-call-ai";
-import { Overview } from "./mcp/overview";
-import type {
-  NamespaceInfo,
-  NamespaceInfoOptions,
-  NamespaceSummary,
-} from "./mcp/overview";
-import watcher from "./mcp/watcher";
+import Overview from "./mcp/overview";
+// import watcher from "./mcp/watcher";//停用观察者
 import workcopy from "./mcp/workcopy";
 import browser from "./mcpFromNpm/browser";
 import codegraph from "./mcpFromNpm/codegraph";
@@ -23,7 +18,7 @@ import type Register from "./public";
 import type { RegistrationData, ToolRegistration } from "./public";
 import store from "./store";
 
-const localRegisters = [aiCallAi, watcher, workcopy] as const;
+const localRegisters = [aiCallAi,workcopy] as const;
 const packageRegisters = [browser, codegraph, docs, io, workspace] as const;
 const packageIdleMilliseconds = 20 * 60 * 1000;
 type AnyRegistrationData = RegistrationData<any, any>;
@@ -47,6 +42,12 @@ type PackageNamespace = {
   idleTimer?: ReturnType<typeof setTimeout>;
 };
 type NamespaceRuntime = LocalNamespace | PackageNamespace;
+type NamespaceSummary = {
+  namespace: string;
+  description: string;
+  kind: "local" | "npm";
+  status: "closed" | "opening" | "running" | "closing" | "error";
+};
 type NextSchema<
   CurrentSchema extends Schema,
   Namespace extends string,
@@ -207,7 +208,11 @@ export default class Mcp<CurrentSchema extends Schema = {}> {
     )).sort((left, right) => left.namespace.localeCompare(right.namespace));
   }
 
-  private namespaceInfo(options: NamespaceInfoOptions): NamespaceInfo {
+  private namespaceInfo(options: {
+    namespace: string;
+    offset: number;
+    limit: number;
+  }) {
     const runtime = this.namespaceRuntime.get(options.namespace);
     if (!runtime) throw new Error(`Unknown MCP namespace: ${options.namespace}`);
     if (runtime.kind === "local") {
@@ -241,7 +246,7 @@ export default class Mcp<CurrentSchema extends Schema = {}> {
     tools?: Tool[];
     offset: number;
     limit: number;
-  }): NamespaceInfo {
+  }) {
     const tools = options.tools;
     if (!tools) {
       return { ...options.summary, toolCount: null, tools: [], nextOffset: null };

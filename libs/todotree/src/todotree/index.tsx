@@ -5,18 +5,7 @@ import { Outlet, useNavigate } from "react-router-dom";
 import type { TodoTreeNode } from "todo-mcp-node/src/todotree/store.ts";
 import store from "../store.ts";
 import Title from "./Title.tsx";
-
-const statusLabelByStatus: Record<NonNullable<TodoTreeNode["status"]>, string> = {
-  1: "待确认",
-  2: "待办",
-  3: "未派工",
-  4: "运行中",
-  5: "已反馈",
-  6: "已中断",
-  7: "已完成",
-  8: "阻塞",
-  9: "已取消",
-};
+import { statusLabelRead } from "./status.ts";
 const agentLabelByAgent: Record<TodoTreeNode["agent"], string> = {
   1: "parent",
   2: "worker",
@@ -64,9 +53,7 @@ export default function App() {
         >
           {drawerAvailable && (
             <Typography.Text type="secondary">
-              {node.status === undefined
-                ? undefined
-                : `${statusLabelByStatus[node.status]} · `}
+              {`${statusLabelRead(node.status)} · `}
               {agentLabelByAgent[node.agent]}
             </Typography.Text>
           )}

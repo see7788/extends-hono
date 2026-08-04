@@ -1,34 +1,18 @@
-import type { Tool } from "@modelcontextprotocol/server";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import Register from "../public";
 
-export type NamespaceStatus = "closed" | "opening" | "running" | "closing" | "error";
-
-export type NamespaceSummary = {
-  namespace: string;
-  description: string;
-  kind: "local" | "npm";
-  status: NamespaceStatus;
-};
-
-export type NamespaceInfo = NamespaceSummary & {
-  toolCount: number | null;
-  tools: Tool[];
-  nextOffset: number | null;
-};
-
-export type NamespaceInfoOptions = {
+type NamespaceInfoOptions = {
   namespace: string;
   offset: number;
   limit: number;
 };
 
 type NamespaceController = {
-  list(): NamespaceSummary[] | Promise<NamespaceSummary[]>;
-  listInfo(options: NamespaceInfoOptions): NamespaceInfo | Promise<NamespaceInfo>;
-  open(namespace: string): NamespaceInfo | Promise<NamespaceInfo>;
-  close(namespace: string): NamespaceSummary | Promise<NamespaceSummary>;
+  list(): unknown | Promise<unknown>;
+  listInfo(options: NamespaceInfoOptions): unknown | Promise<unknown>;
+  open(namespace: string): unknown | Promise<unknown>;
+  close(namespace: string): unknown | Promise<unknown>;
 };
 
 const namespaceSchema = z.string().trim().min(1).regex(/^[A-Za-z0-9_-]+$/);
@@ -56,7 +40,7 @@ const responseCreate = async <T>(context: Context, value: () => T | Promise<T>) 
   }
 };
 
-export class Overview {
+export default class Overview {
   private controller?: NamespaceController;
 
   readonly mcp = new Register({

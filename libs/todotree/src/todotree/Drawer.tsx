@@ -1,11 +1,11 @@
-import { Button, Flex, Input, Splitter, Typography } from "antd";
+import { Button, Flex, Input, Segmented, Splitter } from "antd";
 import { Drawer } from "extends-antd/src/Drawer";
 import { hc } from "hono/client";
-import Markdown from "react-markdown";
 import { useNavigate, useParams } from "react-router-dom";
-import remarkGfm from "remark-gfm";
 import type { TodoMcpApi } from "todo-mcp-node/src/routers.ts";
 import store from "../store.ts";
+import { statusOptions, type TodoTreeStatus } from "./status.ts";
+import Title from "./Title.tsx";
 
 const client = hc<TodoMcpApi>(location.origin);
 
@@ -36,9 +36,23 @@ export default function NodeDrawer() {
       {node && (
         <Splitter orientation="vertical">
           <Splitter.Panel defaultSize="50%" min="20%">
-            <Typography style={{ boxSizing: "border-box", height: "100%", margin: 0, overflow: "auto", padding: 16 }}>
-              <Markdown remarkPlugins={[remarkGfm]}>{node.title}</Markdown>
-            </Typography>
+            <Flex style={{ boxSizing: "border-box", height: "100%", padding: 16 }} vertical>
+              <Segmented<TodoTreeStatus>
+                block
+                onChange={async statusValue => {
+                  const response = await client["todo-mcp-node"].node.set.$post({
+                    json: { id: node.id, status: statusValue },
+                  });
+                  if (!response.ok) throw new Error(await response.text());
+                }}
+                options={statusOptions}
+                size="small"
+                value={node.status}
+              />
+              <Flex style={{ flex: 1, overflow: "auto", paddingTop: 16 }} vertical>
+                <Title {...node} compact={false} />
+              </Flex>
+            </Flex>
           </Splitter.Panel>
           <Splitter.Panel defaultSize="50%" min="20%">
             <form
@@ -51,7 +65,8 @@ export default function NodeDrawer() {
                   json: {
                     id_parent: node.id,
                     title,
-                    titleType: "text",
+                    template: "markdown",
+                    status: 2,
                     agent: 1,
                   },
                 });

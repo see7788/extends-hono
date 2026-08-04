@@ -275,11 +275,14 @@ export default class Register<
     for (const [path, hono] of this.honoDefinitions) {
       pathValidate(path);
       if (hono.routes.length === 0) throw new Error(`Hono registration "${path}" has no routes.`);
+      const honoRouteKeys = new Set<string>();
       for (const route of hono.routes) {
         const routeKey = `${route.method.toUpperCase()} ${routePathGet(path, route.path)}`;
+        if (honoRouteKeys.has(routeKey)) continue;
         if (routeKeys.has(routeKey)) throw new Error(`Duplicate Hono route: ${routeKey}`);
-        routeKeys.add(routeKey);
+        honoRouteKeys.add(routeKey);
       }
+      for (const routeKey of honoRouteKeys) routeKeys.add(routeKey);
       relativeHono.route(path, hono);
     }
 
