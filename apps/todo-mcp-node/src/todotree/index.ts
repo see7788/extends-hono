@@ -238,7 +238,7 @@ export default new Register({
       context => context.json(store.projectAttention(context.req.valid("json").workspacePath), 200),
     ),
     validator.projectResolve,
-    "实时读取当前项目后代节点派生的决策、阻塞、运行中和待办数量。项目根状态不参与计数，也不会被改写。AI 每次回复前调用本接口：decisionIds 非空时第一行列出全部待决策 ID，否则第一行只写“无”。",
+    "实时读取当前项目后代节点派生的决策、阻塞、工作中和待办数量。项目根状态不参与计数，也不会被改写。AI 每次回复前调用本接口：decisionIds 非空时第一行列出全部待决策 ID，否则第一行只写“无”。",
     {
       readOnlyHint: true,
       destructiveHint: false,
@@ -273,6 +273,26 @@ export default new Register({
     "读取当前项目完整项目书，不创建交流节点，也不返回其他项目。",
     {
       readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  )
+  .register(
+    "/project/migrate",
+    new Hono().post(
+      "/",
+      zValidator("json", validator.projectMigrate),
+      async context => {
+        const project = store.projectMigrate(context.req.valid("json"));
+        await eventSend({ event: "tree", data: store.tree() });
+        return context.json(project, 200);
+      },
+    ),
+    validator.projectMigrate,
+    "人类与 AI 共用：把一个已登记项目迁移到新的真实绝对路径；保留项目 ID、完整子树和跨库关系，并拒绝 pnpm 容器或已被其他项目占用的目标路径。",
+    {
+      readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
       openWorldHint: false,

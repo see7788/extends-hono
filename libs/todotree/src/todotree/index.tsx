@@ -190,36 +190,36 @@ export default function App() {
       </Flex>
       <FloatButton.Group
         closeIcon={false}
-        description="筛选"
+        content="筛选"
         icon={false}
         shape="square"
         trigger="click"
       >
-        {([{ label: "全部", value: "all" }, ...statusOptions] as const).map(({ label, value }) => (
-          <FloatButton
-            badge={{
-              count: value === "all"
-                ? Object.values(nodesById ?? {}).filter(node => node.id !== 1).length
-                : statusCountByStatus.get(value) ?? 0,
-              overflowCount: Number.MAX_SAFE_INTEGER,
-              showZero: true,
-            }}
-            description={label}
-            key={value}
-            onClick={() => {
-              statusFilterSet(value);
-              if (value === "all") {
-                expandedNodeIdsSet(new Set());
-                revealedNodeIdSet(undefined);
-              }
-            }}
-            style={statusFilter === value ? {
-              background: token.colorSuccess,
-              borderColor: token.colorSuccess,
-              color: token.colorTextLightSolid,
-            } : {}}
-          />
-        ))}
+        {([{ label: "全部", value: "all" }, ...statusOptions] as const).map(({ label, value }) => {
+          const count = value === "all"
+            ? Object.values(nodesById ?? {}).filter(node => node.id !== 1).length
+            : statusCountByStatus.get(value) ?? 0;
+          return (
+            <FloatButton
+              badge={{ count, overflowCount: Number.MAX_SAFE_INTEGER }}
+              content={label}
+              disabled={count === 0}
+              key={value}
+              onClick={() => {
+                statusFilterSet(value);
+                if (value === "all") {
+                  expandedNodeIdsSet(new Set());
+                  revealedNodeIdSet(undefined);
+                }
+              }}
+              style={statusFilter === value ? {
+                background: token.colorSuccess,
+                borderColor: token.colorSuccess,
+                color: token.colorTextLightSolid,
+              } : {}}
+            />
+          );
+        })}
       </FloatButton.Group>
       <Outlet />
     </Flex>

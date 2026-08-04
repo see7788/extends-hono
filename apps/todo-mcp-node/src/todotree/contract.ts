@@ -2,9 +2,9 @@ import { z } from "zod";
 
 const agentValue = z.literal(1).describe("parent");
 const statusValues = [
-  z.literal(1).describe("待确认"),
+  z.literal(1).describe("待决策"),
   z.literal(2).describe("待办"),
-  z.literal(4).describe("运行中"),
+  z.literal(4).describe("工作中"),
   z.literal(8).describe("阻塞"),
   z.literal(9).describe("已取消"),
   z.literal(7).describe("已完成"),

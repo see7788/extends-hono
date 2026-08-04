@@ -118,6 +118,10 @@ const workspaceTree = z.object({
 const projectResolve = z.object({
   workspacePath: currentWorkspacePath,
 });
+const projectMigrate = z.object({
+  sourceProjectPath: absolutePath.describe("当前已经登记的项目绝对路径；源目录允许已经迁走。"),
+  targetProjectPath: currentWorkspacePath.describe("迁移后的真实项目绝对路径。"),
+});
 const conversationInit = projectResolve.extend({
   title: node.shape.title,
   agent,
@@ -141,6 +145,7 @@ export const validator = {
   move,
   nodeSearch,
   projectRegister: z.object({ projectPath: currentWorkspacePath }),
+  projectMigrate,
   projectRelation: projectRelationInput,
   projectResolve,
   projectNodeRead: del.extend({ workspacePath: currentWorkspacePath }),
@@ -448,6 +453,20 @@ const projectExactRead = (value: string) => {
   }
   return databaseNodeRead(row);
 };
+const registeredProjectRead = (value: string) => {
+  const inputPath = resolve(absolutePath.parse(value));
+  const path = existsSync(inputPath) ? resolve(realpathSync(inputPath)) : inputPath;
+  if (!projectPathAllowed(path)) {
+    throw new Error("待迁移项目路径不属于允许的项目目录。");
+  }
+  const row = projectByPath.get(path);
+  if (!row) {
+    throw new HTTPException(404, {
+      message: `TodoTree project is not registered: ${path}`,
+    });
+  }
+  return databaseNodeRead(row);
+};
 const projectNodeAssert = (projectId: number, nodeId: number) => {
   if (!projectContainsNode.get(projectId, nodeId)) {
     throw new Error("指定节点不属于当前项目。");
@@ -666,6 +685,33 @@ const store = {
       ? databaseNodeRead(current)
       : nodeRead(Number(nodeInsert.run(1, path, "project", 4, 1).lastInsertRowid));
     return projectTreeRead(projectNode.id);
+  }),
+  projectMigrate: database.transaction((options: z.input<typeof validator.projectMigrate>) => {
+    const optionsValue = validator.projectMigrate.parse(options);
+    const sourceProject = registeredProjectRead(optionsValue.sourceProjectPath);
+    const targetPath = workspacePathRead(optionsValue.targetProjectPath);
+    if (existsSync(join(targetPath, "pnpm-workspace.yaml"))) {
+      throw new HTTPException(409, {
+        message: "pnpm workspace 容器不能作为迁移后的具体项目。",
+      });
+    }
+    const targetProjectValue = projectByPath.get(targetPath);
+    if (targetProjectValue) {
+      const targetProject = databaseNodeRead(targetProjectValue);
+      if (targetProject.id !== sourceProject.id) {
+        throw new HTTPException(409, {
+          message: `TodoTree target project is already registered: ${targetPath}`,
+        });
+      }
+    }
+    nodeUpdate.run(
+      targetPath,
+      sourceProject.template,
+      sourceProject.status,
+      sourceProject.agent,
+      sourceProject.id,
+    );
+    return projectTreeRead(sourceProject.id);
   }),
   workspaceRelationAdd: database.transaction((options: z.input<typeof validator.projectRelation>) => {
     const optionsValue = validator.projectRelation.parse(options);
