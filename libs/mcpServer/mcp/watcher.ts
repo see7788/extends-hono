@@ -25,7 +25,10 @@ const definitionSchema = z.object({
   workspacePath: workspacePathSchema,
 });
 
-export default new Register({ namespace: "watcher" }).register(
+export default new Register({
+  namespace: "watcher",
+  description: "生产会话 watcher 定义并接收只读检查报告。",
+}).register(
   "/definition",
   new Hono().get("/", zValidator("query", definitionSchema), context => {
     const input = context.req.valid("query");

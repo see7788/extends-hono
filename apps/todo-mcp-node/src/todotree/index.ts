@@ -1,32 +1,47 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { HTTPException } from "hono/http-exception";
-import { streamSSE } from "hono/streaming";
+import { streamSSE, type SSEStreamingApi } from "hono/streaming";
 import Register from "mcp-server/public.ts";
+import { z } from "zod";
 import store from "../store.ts";
 import { validator } from "./store.ts";
-import pkg from "../../package.json"
 
-export default new Register({ namespace: pkg.name })
+const streams = new Set<SSEStreamingApi>();
+const treeQuery = z.object({});
+const eventSend = async ({
+  data,
+  event,
+}: {
+  data: unknown;
+  event: "add" | "del" | "set" | "tree";
+}) => {
+  for (const stream of [...streams]) {
+    try {
+      await stream.writeSSE({ event, data: JSON.stringify(data) });
+    } catch {
+      streams.delete(stream);
+    }
+  }
+};
+
+export default new Register({
+  namespace: "todo-mcp-node",
+  description: "供人类与 AI 共同维护项目任务树。",
+})
   .register(
-    "/add",
+    "/node/add",
     new Hono().post(
       "/",
       zValidator("json", validator.add),
       async context => {
-        try {
-          const id = await store.getState().todotreeActions.add(context.req.valid("json"));
-          return context.json({ id }, 200);
-        } catch (error) {
-          throw new HTTPException(502, {
-            message: error instanceof Error ? error.message : String(error),
-            cause: error,
-          });
-        }
+        const options = context.req.valid("json");
+        const nodeValue = store.getState().todotreeActions.add(options);
+        await eventSend({ event: "add", data: options });
+        return context.json(nodeValue, 200);
       },
     ),
     validator.add,
-    "在固定根节点或指定父任务下创建节点。",
+    "给指定父节点新增一个节点，并返回正式节点数据。",
     {
       readOnlyHint: false,
       destructiveHint: false,
@@ -35,25 +50,41 @@ export default new Register({ namespace: pkg.name })
     },
   )
   .register(
-    "/set",
+    "/node/del",
+    new Hono().post(
+      "/",
+      zValidator("json", validator.del),
+      async context => {
+        const { id } = context.req.valid("json");
+        const ids = store.getState().todotreeActions.del(id);
+        const result = { ids };
+        await eventSend({ event: "del", data: id });
+        return context.json(result, 200);
+      },
+    ),
+    validator.del,
+    "删除指定节点及其全部子节点，并返回被删除的节点 ID。",
+    {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  )
+  .register(
+    "/node/set",
     new Hono().post(
       "/",
       zValidator("json", validator.set),
       async context => {
-        try {
-          const options = context.req.valid("json");
-          await store.getState().todotreeActions.set(options);
-          return context.json({ id: options.id }, 200);
-        } catch (error) {
-          throw new HTTPException(502, {
-            message: error instanceof Error ? error.message : String(error),
-            cause: error,
-          });
-        }
+        const options = context.req.valid("json");
+        const nodeValue = store.getState().todotreeActions.set(options);
+        await eventSend({ event: "set", data: options });
+        return context.json(nodeValue, 200);
       },
     ),
     validator.set,
-    "按任务 ID 修改一个标题、状态或执行者字段。",
+    "修改指定节点并返回修改后的正式节点数据。",
     {
       readOnlyHint: false,
       destructiveHint: false,
@@ -65,11 +96,11 @@ export default new Register({ namespace: pkg.name })
     "/tree",
     new Hono().get(
       "/",
-      zValidator("query", validator.treeQuery),
+      zValidator("query", treeQuery),
       context => context.json(store.getState().todotree, 200),
     ),
-    validator.treeQuery,
-    "读取当前完整任务树、状态标签和执行者标签。",
+    treeQuery,
+    "读取当前完整任务树与最大节点 ID。",
     {
       readOnlyHint: true,
       destructiveHint: false,
@@ -77,60 +108,21 @@ export default new Register({ namespace: pkg.name })
       openWorldHint: false,
     },
   )
-  .honoAdd("/events",
-    new Hono().get(context => streamSSE(context, async stream => {
-      let active = true;
-      let writes = Promise.resolve();
-      let finish = () => { };
+  .honoAdd(
+    "/events",
+    new Hono().get("/", context => streamSSE(context, async stream => {
+      streams.add(stream);
       const closed = new Promise<void>(resolve => {
-        finish = resolve;
+        stream.onAbort(resolve);
       });
-      const unsubscribe = store.subscribe((state, previousState) => {
-        for (const [id, node] of Object.entries(state.todotree.nodesById)) {
-          if (!active) continue;
-          const previousNode = previousState.todotree.nodesById[Number(id)];
-          if (!previousNode) {
-            writes = writes.then(() => stream.writeSSE({
-              event: "add",
-              data: JSON.stringify({
-                title: node.title,
-                id_parent: node.id_parent,
-                status: node.status,
-                agent: node.agent,
-              }),
-            }));
-            continue;
-          }
-          if (node.title !== previousNode.title) {
-            writes = writes.then(() => stream.writeSSE({
-              event: "set",
-              data: JSON.stringify({ id: node.id, title: node.title }),
-            }));
-          }
-          if (node.status !== previousNode.status) {
-            writes = writes.then(() => stream.writeSSE({
-              event: "set",
-              data: JSON.stringify({ id: node.id, status: node.status }),
-            }));
-          }
-          if (node.agent !== previousNode.agent) {
-            writes = writes.then(() => stream.writeSSE({
-              event: "set",
-              data: JSON.stringify({ id: node.id, agent: node.agent }),
-            }));
-          }
-        }
-      });
-      writes = writes.then(() => stream.writeSSE({
-        event: "tree",
-        data: JSON.stringify(store.getState().todotree),
-      }));
-      stream.onAbort(() => {
-        active = false;
-        unsubscribe();
-        finish();
-      });
-      await closed;
-      await writes;
-    }))
+      try {
+        await stream.writeSSE({
+          event: "tree",
+          data: JSON.stringify(store.getState().todotree),
+        });
+        await closed;
+      } finally {
+        streams.delete(stream);
+      }
+    })),
   );

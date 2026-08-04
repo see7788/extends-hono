@@ -42,7 +42,10 @@ const scopeMaintenance = {
   ],
 };
 
-const mcp = new RegisterFromNpm({ namespace: "codegraph" }).registerPkg({
+const mcp = new RegisterFromNpm({
+  namespace: "codegraph",
+  description: "读取工作区源码索引、符号关系、调用路径和修改影响范围。",
+}).registerPkg({
   instructions: "CodeGraph 使用全局唯一共享索引；每个 AI 维护 workspaceRoot/.gitignore 时，只能按自身当前真实分析需求最小化追加完成本次分析所需的精确目录，禁止加入项目类别、父目录或全仓通配范围，并且使用完成后不得主动收紧已有规则。",
   transport: () => new StdioClientTransport({
     command: process.platform === "win32" ? "pnpm.cmd" : "pnpm",

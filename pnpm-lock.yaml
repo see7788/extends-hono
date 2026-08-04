@@ -429,6 +429,9 @@ importers:
       extends-antd:
         specifier: workspace:*
         version: link:../../../extends-antd
+      extends-zustand:
+        specifier: workspace:*
+        version: link:../../../extends-zustand
       hono:
         specifier: 4.12.30
         version: 4.12.30

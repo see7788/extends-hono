@@ -56,6 +56,7 @@ export type RegistrationData<
   CurrentSchema extends Schema,
 > = {
   namespace: Namespace;
+  description: string;
   hono: HonoBase<
     BlankEnv,
     MergeSchemaPath<CurrentSchema, MergePath<"/", `/${Namespace}`>>,
@@ -120,12 +121,15 @@ export default class Register<
   CurrentSchema extends Schema = {},
 > {
   private readonly namespace: Namespace;
+  private readonly description?: string;
   private definitions: Definition<any, any, any>[] = [];
   private honoDefinitions: HonoDefinition<any, any>[] = [];
+  private mcpDefinitions: Definition<any, any, any>[] = [];
   private delivery?: RegistrationData<Namespace, CurrentSchema>;
 
-  constructor(options: { namespace: Namespace }) {
+  constructor(options: { namespace: Namespace; description?: string }) {
     this.namespace = options.namespace;
+    this.description = options.description;
   }
 
   register<
@@ -143,9 +147,10 @@ export default class Register<
     const next = new Register<
       Namespace,
       CurrentSchema | MergeSchemaPath<ChildSchema, MergePath<"/", Path>>
-    >({ namespace: this.namespace });
+    >({ namespace: this.namespace, description: this.description });
     next.definitions = [...this.definitions, definition];
     next.honoDefinitions = [...this.honoDefinitions];
+    next.mcpDefinitions = [...this.mcpDefinitions];
     return next;
   }
 
@@ -162,9 +167,32 @@ export default class Register<
     const next = new Register<
       Namespace,
       CurrentSchema | MergeSchemaPath<ChildSchema, MergePath<"/", Path>>
-    >({ namespace: this.namespace });
+    >({ namespace: this.namespace, description: this.description });
     next.definitions = [...this.definitions];
     next.honoDefinitions = [...this.honoDefinitions, [path, hono]];
+    next.mcpDefinitions = [...this.mcpDefinitions];
+    return next;
+  }
+
+  mcpAdd<
+    const Path extends `/${string}`,
+    HonoEnv extends Env,
+    ChildSchema extends Schema,
+    HonoBasePath extends string,
+    HonoCurrentPath extends string,
+    InputSchema extends z.ZodObject<z.ZodRawShape>,
+  >(...definition: Definition<
+    Path,
+    HonoBase<HonoEnv, ChildSchema, HonoBasePath, HonoCurrentPath>,
+    InputSchema
+  >) {
+    const next = new Register<Namespace, CurrentSchema>({
+      namespace: this.namespace,
+      description: this.description,
+    });
+    next.definitions = [...this.definitions];
+    next.honoDefinitions = [...this.honoDefinitions];
+    next.mcpDefinitions = [...this.mcpDefinitions, definition];
     return next;
   }
 
@@ -175,7 +203,11 @@ export default class Register<
   deliver(): RegistrationData<Namespace, CurrentSchema> {
     if (this.delivery) return this.delivery;
     namespaceValidate(this.namespace);
-    if (this.definitions.length === 0 && this.honoDefinitions.length === 0) {
+    if (
+      this.definitions.length === 0
+      && this.honoDefinitions.length === 0
+      && this.mcpDefinitions.length === 0
+    ) {
       throw new Error(`MCP namespace "${this.namespace}" has no registrations.`);
     }
 
@@ -183,13 +215,18 @@ export default class Register<
     const relativeHono = new Hono();
     const tools: ToolRegistration[] = [];
 
-    for (const definition of this.definitions) {
+    for (const [definition, honoIncluded] of [
+      ...this.definitions.map(item => [item, true] as const),
+      ...this.mcpDefinitions.map(item => [item, false] as const),
+    ]) {
       const [path, hono, inputSchema, description, annotations] = definition;
       const method = registerMethodGet(definition);
-      const routeKey = `${method} ${path}`;
-      if (routeKeys.has(routeKey)) throw new Error(`Duplicate Hono route: ${routeKey}`);
-      routeKeys.add(routeKey);
-      relativeHono.route(path, hono);
+      if (honoIncluded) {
+        const routeKey = `${method} ${path}`;
+        if (routeKeys.has(routeKey)) throw new Error(`Duplicate Hono route: ${routeKey}`);
+        routeKeys.add(routeKey);
+        relativeHono.route(path, hono);
+      }
       const name = `${this.namespace}.${path.split("/").filter(Boolean).join(".")}.${method}`;
       if (tools.some(tool => tool.name === name)) throw new Error(`Duplicate MCP tool: ${name}`);
       tools.push({
@@ -249,6 +286,8 @@ export default class Register<
     const hono = new Hono().route(`/${this.namespace}`, relativeHono);
     this.delivery = {
       namespace: this.namespace,
+      description: this.description?.trim()
+        || "该本地 MCP 尚未提供命名空间说明。",
       hono: hono as RegistrationData<Namespace, CurrentSchema>["hono"],
       tools,
     };

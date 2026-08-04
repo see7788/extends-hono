@@ -14,12 +14,14 @@ export default function NodeDrawer() {
   const navigate = useNavigate();
   const { nodeId: nodeIdValue } = useParams<{ nodeId: string }>();
   const nodeId = nodeIdValue === undefined ? undefined : Number(nodeIdValue);
-  const node = nodeId === undefined ? undefined : todotree.nodesById[nodeId];
+  const node = nodeId === undefined
+    ? undefined
+    : todotree?.treeData.nodesById[nodeId];
   let workspace = node;
   while (workspace && workspace.id_parent !== 1) {
     workspace = workspace.id_parent === null
       ? undefined
-      : todotree.nodesById[workspace.id_parent];
+      : todotree?.treeData.nodesById[workspace.id_parent];
   }
 
   return (
@@ -39,28 +41,33 @@ export default function NodeDrawer() {
             </Typography>
           </Splitter.Panel>
           <Splitter.Panel defaultSize="50%" min="20%">
-          <form
-            onSubmit={async event => {
-              event.preventDefault();
-              const form = event.currentTarget;
-              const title = String(new FormData(form).get("title") ?? "").trim();
-              if (!title) return;
-              const response = await client["todo-mcp-node"].add.$post({
-                json: { id_parent: node.id, title, agent: 1 },
-              });
-              if (!response.ok) throw new Error(await response.text());
-              form.reset();
-              void navigate("/");
-            }}
-            style={{ boxSizing: "border-box", height: "100%", padding: 16 }}
-          >
-            <Flex gap="middle" style={{ height: "100%" }} vertical>
-              <Input.TextArea name="title" style={{ flex: 1, resize: "none" }} />
-              <Flex justify="end">
-                <Button htmlType="submit" type="primary">发送</Button>
+            <form
+              onSubmit={async event => {
+                event.preventDefault();
+                const form = event.currentTarget;
+                const title = String(new FormData(form).get("title") ?? "").trim();
+                if (!title) return;
+                const response = await client["todo-mcp-node"].node.add.$post({
+                  json: {
+                    id_parent: node.id,
+                    title,
+                    titleType: "text",
+                    agent: 1,
+                  },
+                });
+                if (!response.ok) throw new Error(await response.text());
+                form.reset();
+                void navigate("/");
+              }}
+              style={{ boxSizing: "border-box", height: "100%", padding: 16 }}
+            >
+              <Flex gap="middle" style={{ height: "100%" }} vertical>
+                <Input.TextArea name="title" style={{ flex: 1, resize: "none" }} />
+                <Flex justify="end">
+                  <Button htmlType="submit" type="primary">发送</Button>
+                </Flex>
               </Flex>
-            </Flex>
-          </form>
+            </form>
           </Splitter.Panel>
         </Splitter>
       )}

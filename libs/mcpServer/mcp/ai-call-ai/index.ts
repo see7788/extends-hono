@@ -7,7 +7,10 @@ import workspaceAiContact, {
 } from "mcp-server/mcp/ai-call-ai/WORKSPACE_AI_CONTACT.ts";
 import Register from "mcp-server/public.ts";
 
-export default new Register({ namespace: "ai-call-ai" }).register(
+export default new Register({
+  namespace: "ai-call-ai",
+  description: "在同一工作区内向另一个 AI 会话发送明确消息。",
+}).register(
   "/WORKSPACE_AI_CONTACT",
   new Hono().get("/", zValidator("query", cardSchema), async context => {
     const input = context.req.valid("query");

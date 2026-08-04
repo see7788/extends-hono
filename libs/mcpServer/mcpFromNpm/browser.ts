@@ -4,7 +4,10 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import RegisterFromNpm from "./public";
 
-const browser = new RegisterFromNpm({ namespace: "browser" }).registerPkg({
+const browser = new RegisterFromNpm({
+  namespace: "browser",
+  description: "启动可观察 Chrome，供 AI 与方先生协同检查和操作真实网页。",
+}).registerPkg({
   transport: () => new StdioClientTransport({
     command: process.platform === "win32" ? "pnpm.cmd" : "pnpm",
     args: [

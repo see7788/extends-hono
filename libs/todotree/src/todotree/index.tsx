@@ -1,20 +1,39 @@
 import { FormOutlined } from "@ant-design/icons";
 import { Button, Flex, Tree, Typography, type TreeDataNode } from "antd";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
-import type { TodoTreeStore } from "todo-mcp-node/src/todotree/store.ts";
+import type { TodoTreeNode } from "todo-mcp-node/src/todotree/store.ts";
 import store from "../store.ts";
+import Title from "./Title.tsx";
 
-type TodoTreeNode = TodoTreeStore["todotree"]["nodesById"][number];
+const statusLabelByStatus: Record<NonNullable<TodoTreeNode["status"]>, string> = {
+  1: "待确认",
+  2: "待办",
+  3: "未派工",
+  4: "运行中",
+  5: "已反馈",
+  6: "已中断",
+  7: "已完成",
+  8: "阻塞",
+  9: "已取消",
+};
+const agentLabelByAgent: Record<TodoTreeNode["agent"], string> = {
+  1: "parent",
+  2: "worker",
+  3: "indexer",
+  4: "tokener",
+};
 
 export default function App() {
   const todotree = store(state => state.todotree);
   const navigate = useNavigate();
   const [loadedNodeIds, loadedNodeIdsSet] = useState<ReadonlySet<number>>(new Set());
   const [hoveredNodeId, hoveredNodeIdSet] = useState<number>();
+  useEffect(() => store.getState().connect(), []);
+  const nodesById = todotree?.treeData.nodesById;
   const nodesByParentId = useMemo(() => {
     const nodes = new Map<number | null, TodoTreeNode[]>();
-    for (const node of Object.values(todotree.nodesById)) {
+    for (const node of Object.values(nodesById ?? {})) {
       const siblings = nodes.get(node.id_parent) ?? [];
       siblings.push(node);
       nodes.set(node.id_parent, siblings);
@@ -23,9 +42,12 @@ export default function App() {
       siblings.sort((left, right) => left.id - right.id);
     }
     return nodes;
-  }, [todotree.nodesById]);
+  }, [nodesById]);
   const nodeChildren = (id: number) => nodesByParentId.get(id) ?? [];
-  const treeNode = (node: TodoTreeNode, childrenShow = loadedNodeIds.has(node.id)): TreeDataNode => {
+  const treeNode = (
+    node: TodoTreeNode,
+    childrenShow = loadedNodeIds.has(node.id),
+  ): TreeDataNode => {
     const children = nodeChildren(node.id);
     const drawerAvailable = node.id !== 1 && children.length === 0;
     const drawerOpen = () => void navigate(`/${String(node.id)}`);
@@ -44,11 +66,11 @@ export default function App() {
             <Typography.Text type="secondary">
               {node.status === undefined
                 ? undefined
-                : `${todotree.nodeStatusLabelByStatus[node.status]} · `}
-              {todotree.nodeAgentLabelByAgent[node.agent]}
+                : `${statusLabelByStatus[node.status]} · `}
+              {agentLabelByAgent[node.agent]}
             </Typography.Text>
           )}
-          <Typography.Text>{node.title.slice(0, 60)}</Typography.Text>
+          <Title {...node} />
           {drawerAvailable && hoveredNodeId === node.id && (
             <Button
               aria-label="打开节点抽屉"
@@ -66,12 +88,14 @@ export default function App() {
       children: childrenShow ? children.map(child => treeNode(child)) : undefined,
     };
   };
-  const root = todotree.nodesById[1];
+  const root = nodesById?.[1];
   const treeData = root ? [treeNode(root, true)] : [];
 
   return (
     <Flex vertical>
-      <Typography.Title level={5}>TodoTree #{String(todotree.id)}</Typography.Title>
+      <Typography.Title level={5}>
+        TodoTree #{String(todotree?.treeDataMaxId ?? 0)}
+      </Typography.Title>
       <Tree
         blockNode
         defaultExpandedKeys={[1]}

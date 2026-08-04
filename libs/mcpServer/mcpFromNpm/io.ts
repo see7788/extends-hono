@@ -2,7 +2,10 @@ import { fileURLToPath } from "node:url";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import RegisterFromNpm from "./public";
 
-const mcp = new RegisterFromNpm({ namespace: "io" }).registerPkg({
+const mcp = new RegisterFromNpm({
+  namespace: "io",
+  description: "在允许目录内读取和维护文件、目录及基础文件系统数据。",
+}).registerPkg({
   instructions: "在当前母库及其同级项目的公共根目录内执行文件和目录 IO；所有路径必须位于 io.list_allowed_directories 返回的允许范围内。",
   transport: () => new StdioClientTransport({
     command: process.platform === "win32" ? "npx.cmd" : "npx",

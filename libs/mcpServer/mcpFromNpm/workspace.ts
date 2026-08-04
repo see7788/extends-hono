@@ -1,7 +1,10 @@
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import RegisterFromNpm from "./public";
 
-const mcp = new RegisterFromNpm({ namespace: "workspace" }).registerPkg({
+const mcp = new RegisterFromNpm({
+  namespace: "workspace",
+  description: "执行桌面工作区命令、进程和系统级开发操作。",
+}).registerPkg({
   transport: () => new StdioClientTransport({
     command: process.platform === "win32" ? "npx.cmd" : "npx",
     args: ["-y", "@wonderwhy-er/desktop-commander@0.2.46"],

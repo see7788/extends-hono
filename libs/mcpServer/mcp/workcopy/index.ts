@@ -412,7 +412,10 @@ const projectSync = async (input: z.infer<typeof syncSchema>) => {
   }
 };
 
-const workcopy = new Register({ namespace: "workcopy" })
+const workcopy = new Register({
+  namespace: "workcopy",
+  description: "管理机械盘项目与 SSD 工作副本之间的创建、状态和归还。",
+})
   .register(
     "/create",
     new Hono().post("/", zValidator("json", createSchema), async context => (

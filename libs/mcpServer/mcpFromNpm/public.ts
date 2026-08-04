@@ -42,6 +42,8 @@ type Runtime = {
   transportClosed: boolean;
 };
 
+export type PackageStatus = "closed" | "opening" | "running" | "closing" | "error";
+
 const childPidRead = (transport: Transport) => {
   if (!("pid" in transport)) return;
   const pid = transport.pid;
@@ -69,18 +71,33 @@ export default class RegisterFromNpm<
   Namespace extends string,
   AddedSchema extends Schema = {},
 > {
-  private readonly namespace: Namespace;
+  readonly namespace: Namespace;
+  readonly description: string;
   private packageDefinition?: PackageDefinition;
   private replacements: Replacement[] = [];
   private deletions: string[] = [];
   private additions: Addition[] = [];
   private honoDefinitions: HonoDefinition<any, any>[] = [];
+  private mcpAdditions: Addition[] = [];
   private delivery?: Promise<RegistrationData<Namespace, AddedSchema>>;
   private runtime?: Runtime;
   private toolCall?: ToolCall;
+  private deliveryError?: unknown;
 
-  constructor(options: { namespace: Namespace }) {
+  constructor(options: { namespace: Namespace; description: string }) {
     this.namespace = options.namespace;
+    this.description = options.description;
+    if (!this.description.trim()) {
+      throw new Error(`External MCP "${this.namespace}" requires a namespace description.`);
+    }
+  }
+
+  get status(): PackageStatus {
+    if (this.deliveryError || this.runtime?.transportClosed) return "error";
+    if (this.runtime?.closing) return "closing";
+    if (this.runtime) return "running";
+    if (this.delivery) return "opening";
+    return "closed";
   }
 
   registerPkg(options: PackageDefinition) {
@@ -148,14 +165,38 @@ export default class RegisterFromNpm<
     >;
   }
 
+  mcpAdd<
+    const Path extends `/${string}`,
+    HonoEnv extends Env,
+    ChildSchema extends Schema,
+    HonoBasePath extends string,
+    HonoCurrentPath extends string,
+    InputSchema extends z.ZodObject<z.ZodRawShape>,
+  >(
+    definition: Definition<
+      Path,
+      HonoBase<HonoEnv, ChildSchema, HonoBasePath, HonoCurrentPath>,
+      InputSchema
+    > | ((toolCall: ToolCall) => Definition<
+      Path,
+      HonoBase<HonoEnv, ChildSchema, HonoBasePath, HonoCurrentPath>,
+      InputSchema
+    >),
+  ) {
+    this.mcpAdditions.push(definition);
+    return this;
+  }
+
   get hono() {
     return this.deliver().then(delivery => delivery.hono);
   }
 
   deliver(): Promise<RegistrationData<Namespace, AddedSchema>> {
     if (this.delivery) return this.delivery;
+    this.deliveryError = undefined;
     const delivery = this.deliveryCreate().catch(error => {
       if (this.delivery === delivery) this.delivery = undefined;
+      this.deliveryError = error;
       throw error;
     });
     this.delivery = delivery;
@@ -175,13 +216,24 @@ export default class RegisterFromNpm<
 
   async close() {
     const runtime = this.runtime;
-    if (!runtime) return;
-    runtime.closing ??= runtime.client.close();
-    await runtime.closing;
+    if (!runtime) {
+      this.delivery = undefined;
+      this.toolCall = undefined;
+      this.deliveryError = undefined;
+      return;
+    }
+    try {
+      runtime.closing ??= runtime.client.close();
+      await runtime.closing;
+    } catch (error) {
+      this.deliveryError = error;
+      throw error;
+    }
     if (this.runtime !== runtime) return;
     this.runtime = undefined;
     this.delivery = undefined;
     this.toolCall = undefined;
+    this.deliveryError = undefined;
   }
 
   private async deliveryCreate(): Promise<RegistrationData<Namespace, AddedSchema>> {
@@ -214,7 +266,10 @@ export default class RegisterFromNpm<
           toolCall: currentToolCall,
         }));
 
-      let local = new Register({ namespace: this.namespace }) as Register<Namespace, any>;
+      let local = new Register({
+        namespace: this.namespace,
+        description: this.description,
+      }) as Register<Namespace, any>;
       for (const addition of this.additions) {
         const definition = typeof addition === "function" ? addition(toolCall) : addition;
         local = local.register(...definition) as Register<Namespace, any>;
@@ -222,11 +277,16 @@ export default class RegisterFromNpm<
       for (const [path, hono] of this.honoDefinitions) {
         local = local.honoAdd(path, hono) as Register<Namespace, any>;
       }
+      for (const addition of this.mcpAdditions) {
+        const definition = typeof addition === "function" ? addition(toolCall) : addition;
+        local = local.mcpAdd(...definition) as Register<Namespace, any>;
+      }
       let delivery: RegistrationData<Namespace, AddedSchema>;
-      if (this.additions.length || this.honoDefinitions.length) {
+      if (this.additions.length || this.honoDefinitions.length || this.mcpAdditions.length) {
         const localDelivery = local.deliver();
         delivery = {
           namespace: this.namespace,
+          description: this.description,
           hono: localDelivery.hono as RegistrationData<Namespace, AddedSchema>["hono"],
           tools: [...tools, ...localDelivery.tools],
         };
@@ -234,6 +294,7 @@ export default class RegisterFromNpm<
         const emptyHono = new Hono().route(`/${this.namespace}`, new Hono());
         delivery = {
           namespace: this.namespace,
+          description: this.description,
           hono: emptyHono as RegistrationData<Namespace, AddedSchema>["hono"],
           tools,
         };

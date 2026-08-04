@@ -1,7 +1,10 @@
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import RegisterFromNpm from "./public";
 
-const mcp = new RegisterFromNpm({ namespace: "docs" }).registerPkg({
+const mcp = new RegisterFromNpm({
+  namespace: "docs",
+  description: "查询软件库和框架的当前技术文档与代码示例。",
+}).registerPkg({
   transport: () => new StreamableHTTPClientTransport(
     new URL("https://mcp.context7.com/mcp"),
   ),
