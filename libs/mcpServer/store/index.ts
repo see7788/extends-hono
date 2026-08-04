@@ -13,6 +13,7 @@ import {
 } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import { createStore, type StateCreator } from "zustand/vanilla";
+import aiRuntimeSlice from "../mcp/ai-runtime/store";
 import mcpErrorSlice from "../mcp/error";
 import workcopySlice from "../mcp/workcopy/store";
 import type { Store } from "./type";
@@ -50,6 +51,7 @@ const storeSlice: StateCreator<
   [],
   Store
 > = (...options) => ({
+  ...aiRuntimeSlice(...options),
   ...mcpErrorSlice(...options),
   ...workcopySlice(...options),
 });

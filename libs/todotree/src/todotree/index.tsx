@@ -1,5 +1,15 @@
 import { FormOutlined } from "@ant-design/icons";
-import { Button, Flex, FloatButton, theme, Tree, Typography, type TreeDataNode } from "antd";
+import {
+  Button,
+  Flex,
+  FloatButton,
+  theme,
+  Tooltip,
+  Tree,
+  Typography,
+  type TreeDataNode,
+} from "antd";
+import type { AiRuntime } from "mcp-server/public.ts";
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { statusOptions } from "todo-mcp-node/src/todotree/contract.ts";
@@ -15,11 +25,13 @@ const statusLabelRead = (status: TodoTreeNode["status"]) => {
 };
 
 function TreeTitle({
+  ai,
   attention,
   drawerOpen,
   node,
   revealed,
 }: {
+  ai: AiRuntime[];
   attention?: TodoTreeState["projectAttentionById"][number];
   drawerOpen(): void;
   node: TodoTreeNode;
@@ -69,6 +81,13 @@ function TreeTitle({
         </Flex>
       )}
       <Title {...node} />
+      {ai.map(runtime => (
+        <Tooltip key={runtime.id} title={runtime.workspacePath}>
+          <Typography.Text style={{ color: token.colorSuccess, whiteSpace: "nowrap" }}>
+            #{String(runtime.id)}
+          </Typography.Text>
+        </Tooltip>
+      ))}
       {!hovered && node.template === "project" && attentionStatuses.length === 0 && (
         <Typography.Text style={{ whiteSpace: "nowrap" }} type="secondary">
           {statusLabelRead(node.status)}
@@ -93,6 +112,7 @@ function TreeTitle({
 export default function App() {
   const { token } = theme.useToken();
   const todotree = store(state => state.todotree);
+  const todotreeAi = store(state => state.todotreeAi);
   const todotreeRecent = store(state => state.todotreeRecent);
   const navigate = useNavigate();
   const [expandedNodeIds, expandedNodeIdsSet] = useState<ReadonlySet<number>>(new Set());
@@ -143,6 +163,17 @@ export default function App() {
     }
     return counts;
   }, [nodesById]);
+  const aiByProjectId = useMemo(() => {
+    const result = new Map<number, AiRuntime[]>();
+    for (const runtime of todotreeAi) {
+      for (const projectId of runtime.projectIds) {
+        const projectAi = result.get(projectId) ?? [];
+        projectAi.push(runtime);
+        result.set(projectId, projectAi);
+      }
+    }
+    return result;
+  }, [todotreeAi]);
   const nodeChildren = (id: number) => (nodesByParentId.get(id) ?? []).filter(
     nodeValue => statusFilter === "all" || filteredNodeIds.has(nodeValue.id),
   );
@@ -161,6 +192,7 @@ export default function App() {
       isLeaf: children.length === 0,
       title: drawerAvailable && (
         <TreeTitle
+          ai={aiByProjectId.get(node.id) ?? []}
           attention={attention}
           drawerOpen={drawerOpen}
           node={node}

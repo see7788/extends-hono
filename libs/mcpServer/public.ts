@@ -14,6 +14,17 @@ import type {
   Schema,
 } from "hono/types";
 import { z } from "zod";
+import store from "./store";
+import type { AiRuntime, Store } from "./store/type";
+
+export type { AiRuntime };
+
+export type McpServerBindings = {
+  mcpServer: {
+    aiRuntimeActions: Store["aiRuntimeActions"];
+    sessionId?: string;
+  };
+};
 
 export type ToolContractAnnotations = Omit<ToolAnnotations, "title"> & Required<Pick<
   ToolAnnotations,
@@ -236,7 +247,7 @@ export default class Register<
           inputSchema,
           annotations,
         },
-        handler: async (arguments_: Record<string, unknown>) => {
+        handler: async (arguments_: Record<string, unknown>, extra) => {
           let requestPath = "/";
           if (method === "GET" || method === "HEAD") {
             const search = new URLSearchParams();
@@ -252,7 +263,12 @@ export default class Register<
             const query = search.toString();
             if (query) requestPath += `?${query}`;
           }
-          const env = { mcpServer: true };
+          const env: McpServerBindings = {
+            mcpServer: {
+              aiRuntimeActions: store.getState().aiRuntimeActions,
+              sessionId: extra.sessionId,
+            },
+          };
           const response = method === "GET" || method === "HEAD"
             ? await hono.request(requestPath, { method }, env)
             : await hono.request("/", {

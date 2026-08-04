@@ -336,6 +336,9 @@ importers:
       immer:
         specifier: 10.2.0
         version: 10.2.0
+      mcp-server:
+        specifier: workspace:*
+        version: link:../mcpServer
       react:
         specifier: 19.2.8
         version: 19.2.8

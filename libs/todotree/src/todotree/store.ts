@@ -1,6 +1,7 @@
 import type { ImmerStateCreator } from "extends-zustand/immerStateCreator";
 import { hc } from "hono/client";
 import type { TodoMcpApi } from "todo-mcp-node/src/routers.ts";
+import type { AiRuntime } from "mcp-server/public.ts";
 import type {
   TodoTreeNode,
   TodoTreeState,
@@ -8,8 +9,10 @@ import type {
 
 export type TodoTreeStore = {
   todotree: TodoTreeState | undefined;
+  todotreeAi: AiRuntime[];
   todotreeRecent: { id: number; unread: boolean }[];
   todotreeActions: {
+    aiSet(ai: AiRuntime[]): void;
     connect(): () => void;
     nodeAdd(node: TodoTreeNode): void;
     nodeDel(ids: number[]): void;
@@ -23,8 +26,12 @@ export type TodoTreeStore = {
 
 const store: ImmerStateCreator<TodoTreeStore> = (set, get) => ({
   todotree: undefined,
+  todotreeAi: [],
   todotreeRecent: [],
   todotreeActions: {
+    aiSet: ai => set(state => {
+      state.todotreeAi = ai;
+    }),
     connect: () => {
       const client = hc<TodoMcpApi>(window.location.origin);
       const eventSource = new EventSource(client["todo-mcp-node"].events.$url());
@@ -33,6 +40,9 @@ const store: ImmerStateCreator<TodoTreeStore> = (set, get) => ({
       });
       eventSource.addEventListener("add", event => {
         get().todotreeActions.nodeAdd(JSON.parse(event.data) as TodoTreeNode);
+      });
+      eventSource.addEventListener("ai", event => {
+        get().todotreeActions.aiSet(JSON.parse(event.data) as AiRuntime[]);
       });
       eventSource.addEventListener("attention", event => {
         get().todotreeActions.projectAttentionSet(

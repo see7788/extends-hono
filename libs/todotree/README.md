@@ -8,11 +8,16 @@
 todotree/
 ├── src/
 │   ├── main.tsx                                    // 装配 React 页面
+│   ├── routers.tsx                                 // 生产 Tree 与节点抽屉的 Hash 路由
 │   ├── store.ts
-│   │   └── default: StoreApi<TodoTreeStore>        // 消费共享切片并接收首次完整树和后续节点 SSE
-│   ├── style.css                                   // 页面布局与树层级样式
+│   │   └── default: StoreApi<TodoTreeStore>        // 组合 TodoTree 页面切片
 │   └── todotree/
-│       └── index.tsx                               // 呈现页面并用 hc 调用节点接口
+│       ├── store.ts
+│       │   └── default: ImmerStateCreator<TodoTreeStore>
+│       │                                              // 接收任务树、最近节点和在线 AI 的 SSE
+│       ├── index.tsx                                  // 虚拟渲染 Tree、筛选、排序及在线 AI 编号
+│       ├── Title.tsx                                  // 按节点 template 呈现标题
+│       └── Drawer.tsx                                 // 呈现并修改当前节点
 ├── index.html                                      // Vite 页面入口
 └── package.json
 ```
@@ -23,4 +28,4 @@ todotree/
 pnpm --filter todo-mcp-node dev
 ```
 
-打开 `http://127.0.0.1:3005/todotree/`；页面与 AI MCP 消费同一组 TodoTree Hono action，服务端数据变化后通过 SSE 主动交付最新任务树。
+打开 `http://127.0.0.1:3005/todotree/`；页面与 AI MCP 消费同一组 TodoTree Hono action，服务端通过 SSE 主动交付任务树和在线 AI 变化。右下角方形悬浮按钮组可按路径、状态或编号排序；路径排序会让同一 pnpm 容器内的项目相邻。

@@ -1,4 +1,24 @@
+export type AiRuntime = {
+  id: number;
+  projectIds: number[];
+  workspacePath: string;
+};
+
 export type Store = {
+  aiRuntime: {
+    idNext: number;
+    sessions: Record<string, AiRuntime>;
+  };
+  aiRuntimeActions: {
+    list(): AiRuntime[];
+    sessionClose(sessionId: string): void;
+    sessionGet(sessionId: string): AiRuntime;
+    workspaceSet(options: {
+      projectId: number;
+      sessionId: string;
+      workspacePath: string;
+    }): AiRuntime;
+  };
   mcpError: {
     entries: Array<{
       at: string;

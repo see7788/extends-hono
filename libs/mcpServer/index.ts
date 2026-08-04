@@ -1,7 +1,15 @@
-import { createMcpHandler, McpServer, type Tool } from "@modelcontextprotocol/server";
+import {
+  createMcpHandler,
+  isInitializeRequest,
+  isLegacyRequest,
+  McpServer,
+  WebStandardStreamableHTTPServerTransport,
+  type Tool,
+} from "@modelcontextprotocol/server";
 import { Hono } from "hono";
 import type { HonoBase } from "hono/hono-base";
 import type { BlankEnv, MergePath, MergeSchemaPath, Schema } from "hono/types";
+import { randomUUID } from "node:crypto";
 import { inspect } from "node:util";
 import { z } from "zod";
 import aiCallAi from "./mcp/ai-call-ai";
@@ -75,6 +83,10 @@ const toolOverviewCreate = (tool: ToolRegistration): Tool => ({
 export default class Mcp<CurrentSchema extends Schema = {}> {
   private readonly namespaceRuntime = new Map<string, NamespaceRuntime>();
   private readonly activeServers = new Set<ActiveServer>();
+  private readonly sessionTransports = new Map<
+    string,
+    WebStandardStreamableHTTPServerTransport
+  >();
   private healthAuditError?: unknown;
   private healthAuditRunning?: Promise<void>;
   readonly hono: HonoBase<BlankEnv, CurrentSchema, "/", "/">;
@@ -125,15 +137,48 @@ export default class Mcp<CurrentSchema extends Schema = {}> {
     }, 20_000);
     healthAuditTimer.unref();
 
-    const handler = createMcpHandler(() => {
-      const mcp = new McpServer({ name: "todo-mcp", version: "0.1.0" });
-      const activeServer: ActiveServer = { mcp, tools: new Map() };
-      this.activeServers.add(activeServer);
-      mcp.server.onclose = () => this.activeServers.delete(activeServer);
-      this.serverToolsSync(activeServer);
-      return mcp;
+    const modernHandler = createMcpHandler(() => this.serverCreate(), { legacy: "reject" });
+    this.hono.all("/todo-mcp", async context => {
+      const request = context.req.raw;
+      if (!await isLegacyRequest(request)) return modernHandler.fetch(request);
+      return this.legacyRequest(request);
     });
-    this.hono.all("/todo-mcp", context => handler.fetch(context.req.raw));
+  }
+
+  private async legacyRequest(request: Request) {
+    const sessionId = request.headers.get("mcp-session-id");
+    if (sessionId) {
+      const transport = this.sessionTransports.get(sessionId);
+      if (!transport) return new Response("MCP session not found.", { status: 404 });
+      return transport.handleRequest(request);
+    }
+    if (request.method !== "POST" || !isInitializeRequest(await request.clone().json())) {
+      return new Response("MCP session ID is required.", { status: 400 });
+    }
+
+    let transport: WebStandardStreamableHTTPServerTransport;
+    transport = new WebStandardStreamableHTTPServerTransport({
+      enableJsonResponse: true,
+      sessionIdGenerator: randomUUID,
+      onsessioninitialized: initializedSessionId => {
+        this.sessionTransports.set(initializedSessionId, transport);
+      },
+      onsessionclosed: closedSessionId => {
+        this.sessionTransports.delete(closedSessionId);
+        store.getState().aiRuntimeActions.sessionClose(closedSessionId);
+      },
+    });
+    await this.serverCreate().connect(transport);
+    return transport.handleRequest(request);
+  }
+
+  private serverCreate() {
+    const mcp = new McpServer({ name: "todo-mcp", version: "0.1.0" });
+    const activeServer: ActiveServer = { mcp, tools: new Map() };
+    this.activeServers.add(activeServer);
+    mcp.server.onclose = () => this.activeServers.delete(activeServer);
+    this.serverToolsSync(activeServer);
+    return mcp;
   }
 
   register<Namespace extends string, FragmentSchema extends Schema>(

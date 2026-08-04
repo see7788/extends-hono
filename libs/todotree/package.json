@@ -13,6 +13,7 @@
     "extends-zustand": "workspace:*",
     "hono": "4.12.30",
     "immer": "10.2.0",
+    "mcp-server": "workspace:*",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-markdown": "^10.1.0",

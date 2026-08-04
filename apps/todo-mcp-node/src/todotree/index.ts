@@ -1,17 +1,22 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { streamSSE, type SSEStreamingApi } from "hono/streaming";
-import Register from "mcp-server/public.ts";
+import { resolve } from "node:path";
+import { z } from "zod";
+import Register, { type McpServerBindings } from "mcp-server/public.ts";
+import mcpStore from "mcp-server/store/index.ts";
 import { templateOptions } from "./contract.ts";
 import store, { validator } from "./store.ts";
 
+const agentMeInput = z.object({});
 const streams = new Set<SSEStreamingApi>();
 const eventSend = async ({
   data,
   event,
 }: {
   data: unknown;
-  event: "add" | "attention" | "del" | "node" | "set" | "tree";
+  event: "add" | "ai" | "attention" | "del" | "node" | "set" | "tree";
 }) => {
   for (const stream of [...streams]) {
     try {
@@ -21,6 +26,14 @@ const eventSend = async ({
     }
   }
 };
+const aiRuntimeUnsubscribe = mcpStore.subscribe((state, previousState) => {
+  if (state.aiRuntime === previousState.aiRuntime) return;
+  void eventSend({ event: "ai", data: state.aiRuntimeActions.list() });
+});
+const hot = (import.meta as ImportMeta & {
+  hot?: { dispose(callback: () => void): void };
+}).hot;
+if (hot) hot.dispose(aiRuntimeUnsubscribe);
 const projectTreeContract = `初始化项目交流并读取当前完整项目书。AI 只提交自己当前的绝对工作路径；服务端只把它解析到最近的已登记祖先项目，不依据 package.json、pnpm workspace 或其他语言文件猜测项目，也不公开内部允许根与其他项目。项目登记路径只生产一个 template=${templateOptions[0].value} 节点，严禁把路径中的盘符或目录分别建成节点。任务、问题、决策、数据、切片、生产者、消费者、蓝图、源码、验证与结果，全部是同一棵项目 tree 的节点。AI 进入已有或空项目后的第一项工作必须调用 conversation.init；未登记路径必须停止，不能自行登记或改认其他目录。
 
 源码蓝图初始刚好三层：第一层 template=${templateOptions[0].value}，是完整项目路径；第二层 template=${templateOptions[1].value}，是从项目根开始的完整相对文件路径，文件即使经过多层目录也只生产这一行，严禁把中间目录建成节点；第三层 template=${templateOptions[2].value}，只列该文件真实公开成员，使用可成立的标准 TypeScript 类型或签名美化表达。成员下一行用 // 先写具体用途；该成员实际消费其他生产者时，继续写“调用 相对文件路径.成员()”，只记录直接调用，不越级展开。实现库时，非成品消费者入口但因库内实现必须导出的成员统一在签名前标记 [内]；私有成员、占位成员和无真实用途的导出不得进入项目书。
@@ -156,12 +169,23 @@ export default new Register({
   )
   .mcpAdd(
     "/conversation/init",
-    new Hono().post(
+    new Hono<{ Bindings: McpServerBindings }>().post(
       "/",
       zValidator("json", validator.conversationInit),
       async context => {
         const options = context.req.valid("json");
+        const sessionId = context.env.mcpServer.sessionId;
+        if (!sessionId) {
+          throw new HTTPException(409, {
+            message: "当前 MCP transport 未提供 sessionId，不能登记在线 AI。",
+          });
+        }
         const result = store.conversationInit(options);
+        const ai = context.env.mcpServer.aiRuntimeActions.workspaceSet({
+          projectId: result.projectId,
+          sessionId,
+          workspacePath: resolve(options.workspacePath),
+        });
         await eventSend({ event: "tree", data: store.tree() });
         await eventSend({
           event: "node",
@@ -170,7 +194,7 @@ export default new Register({
             workspacePath: options.workspacePath,
           }),
         });
-        return context.json(result, 200);
+        return context.json({ ...result, ai }, 200);
       },
     ),
     validator.conversationInit,
@@ -179,6 +203,30 @@ export default new Register({
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: false,
+      openWorldHint: false,
+    },
+  )
+  .mcpAdd(
+    "/agent/me",
+    new Hono<{ Bindings: McpServerBindings }>().post(
+      "/",
+      zValidator("json", agentMeInput),
+      context => {
+        const sessionId = context.env.mcpServer.sessionId;
+        if (!sessionId) {
+          throw new HTTPException(409, {
+            message: "当前 MCP transport 未提供 sessionId。",
+          });
+        }
+        return context.json(context.env.mcpServer.aiRuntimeActions.sessionGet(sessionId), 200);
+      },
+    ),
+    agentMeInput,
+    "读取当前 VS Code MCP 会话的在线 AI 编号、完整工作路径和已绑定项目；必须先调用 conversation.init。",
+    {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
       openWorldHint: false,
     },
   )
@@ -396,6 +444,10 @@ export default new Register({
         await stream.writeSSE({
           event: "tree",
           data: JSON.stringify(store.tree()),
+        });
+        await stream.writeSSE({
+          event: "ai",
+          data: JSON.stringify(mcpStore.getState().aiRuntimeActions.list()),
         });
         await closed;
       } finally {

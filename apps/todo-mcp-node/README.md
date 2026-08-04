@@ -24,7 +24,8 @@ todo-mcp-node/
 │       │       ├── node.del.POST                    // 删除节点树并推送正式 ID 集合
 │       │       ├── node.move.POST                   // 移动节点及其完整子树
 │       │       ├── node.set.POST                    // 修改节点并推送正式节点
-│       │       ├── conversation.init.POST           // 解析当前项目并建立 AI 交流节点
+│       │       ├── conversation.init.POST           // 建立交流节点并绑定当前 MCP session 的在线 AI
+│       │       ├── agent.me.POST                    // 读取当前在线 AI 编号、路径和项目
 │       │       ├── workspace.tree.POST              // 聚合容器内全部已登记项目及跨项目关系
 │       │       ├── workspace.relation.add.POST      // 新增跨项目关系
 │       │       ├── workspace.relation.del.POST      // 删除跨项目关系
@@ -39,7 +40,7 @@ todo-mcp-node/
 │       │       ├── node.context.POST                // 读取指定节点的祖先、当前节点与直接子节点
 │       │       ├── node.search.POST                 // 在指定项目内按条件查找节点
 │       │       ├── tree.GET                         // 读取 SQLite 生产的完整 TodoTree 数据
-│       │       └── events.GET                       // 向页面交付初始树与后续正式变化
+│       │       └── events.GET                       // 向页面交付任务树与在线 AI 的 SSE 变化
 │       └── store.ts
 │           ├── validator                           // 生产接口与 SQLite 共同使用的验证器
 │           ├── TodoTreeNode: type                  // 交付正式节点类型
@@ -62,4 +63,4 @@ todo-mcp-node/
 pnpm --filter todo-mcp-node dev
 ```
 
-TodoTree 页面位于 `http://127.0.0.1:3005/todotree/`，MCP 位于 `http://127.0.0.1:3005/todo-mcp`；SQLite 位于 `join(homedir(), ".store", md5(projectPath), "store.sqlite")`。
+TodoTree 页面位于 `http://127.0.0.1:3005/todotree/`，MCP 位于 `http://127.0.0.1:3005/todo-mcp`；SQLite 位于 `join(homedir(), ".store", md5(projectPath), "store.sqlite")`。项目行显示在线 AI 的 `#编号`，悬停编号可读取该 VS Code 窗口的完整工作路径。
