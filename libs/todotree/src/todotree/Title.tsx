@@ -1,4 +1,4 @@
-import { Flex, Tag, Typography } from "antd";
+import { Flex, Typography } from "antd";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { TodoTreeNode } from "todo-mcp-node/src/todotree/store.ts";
@@ -9,17 +9,17 @@ export default function Title({
   template,
 }: TodoTreeNode & { compact?: boolean }) {
   if (template === "project") {
-    return <Typography.Text code strong>{title}</Typography.Text>;
+    return <Typography.Text strong>{title}</Typography.Text>;
   }
   if (template === "file") {
-    return <Typography.Text code>{title}</Typography.Text>;
+    return <Typography.Text style={{ fontFamily: "monospace" }}>{title}</Typography.Text>;
   }
   if (template === "typescript") {
     const internal = title.startsWith("[内]");
     return (
       <Flex align="start" gap="small">
-        {internal && <Tag color="default">内</Tag>}
-        <Typography.Text code style={{ whiteSpace: "pre-wrap" }}>
+        {internal && <Typography.Text type="secondary">[内]</Typography.Text>}
+        <Typography.Text style={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
           {internal ? title.slice(3).trimStart() : title}
         </Typography.Text>
       </Flex>
@@ -27,6 +27,14 @@ export default function Title({
   }
   if (template === "text") {
     return <Typography.Text>{compact ? title.slice(0, 60) : title}</Typography.Text>;
+  }
+  if (compact) {
+    const summary = title
+      .replace(/[#*_`~>\-[\]()]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 60);
+    return <Typography.Text>{summary}</Typography.Text>;
   }
 
   return (

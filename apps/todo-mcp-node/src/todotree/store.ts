@@ -1,32 +1,13 @@
 import Database from "better-sqlite3";
 import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { contractValidator } from "./contract.ts";
 
-const agent = z.union([
-  z.literal(1),
-  z.literal(2),
-  z.literal(3),
-  z.literal(4),
-]).describe("唯一执行者字段：1 parent、2 worker、3 indexer、4 tokener；title 不得重复执行者。");
-const status = z.union([
-  z.literal(1),
-  z.literal(2),
-  z.literal(3),
-  z.literal(4),
-  z.literal(5),
-  z.literal(6),
-  z.literal(7),
-  z.literal(8),
-  z.literal(9),
-]).describe(
-  "唯一状态字段：1 待确认、2 待办、3 未派工、4 运行中、5 已反馈、6 已中断、7 已完成、8 阻塞、9 已取消；title 不得添加状态符号或文字。",
-);
-const template = z.enum(["project", "file", "typescript", "markdown", "text"])
-  .describe("渲染模板：project 项目路径、file 项目内相对文件路径、typescript 真实 TS 公开成员、markdown 富文本、text 普通短内容。");
+const { agent, status, template } = contractValidator;
 const absolutePath = z.string().trim().min(1).refine(
   value => /^(?:[A-Za-z]:[\\/]|\/)/.test(value),
   "TodoTree project title must be an absolute path.",
@@ -45,7 +26,7 @@ const node = z.object({
   ),
   template,
   status,
-  agent: agent.describe("当前负责该节点的执行者。"),
+  agent,
 });
 const add = node.omit({ id: true }).extend({
   id_parent: z.number().int().positive(),
@@ -61,13 +42,9 @@ const add = node.omit({ id: true }).extend({
 const setValue = z.object({
   id: z.number().int().positive(),
   title: node.shape.title.optional(),
-  status: node.shape.status.optional(),
+  status: node.shape.status,
   agent: node.shape.agent.optional(),
-}).refine(
-  value => [value.title, value.status, value.agent]
-    .some(field => field !== undefined),
-  { message: "TodoTree set requires at least one changed field." },
-);
+});
 const del = z.object({
   id: z.number().int().positive(),
 });
@@ -188,6 +165,38 @@ const descendantIds = database.prepare(`
     JOIN descendants AS parent ON child.id_parent = parent.id
   )
   SELECT id FROM descendants ORDER BY id
+`);
+const unfinishedDescendant = database.prepare(`
+  WITH RECURSIVE descendants(id, status) AS (
+    SELECT id, status FROM todotree_node WHERE id_parent = ?
+    UNION ALL
+    SELECT child.id, child.status
+    FROM todotree_node AS child
+    JOIN descendants AS parent ON child.id_parent = parent.id
+  )
+  SELECT id FROM descendants WHERE status <> 7 LIMIT 1
+`);
+const completedAncestor = database.prepare(`
+  WITH RECURSIVE ancestors(id, id_parent, status) AS (
+    SELECT id, id_parent, status FROM todotree_node WHERE id = ?
+    UNION ALL
+    SELECT parent.id, parent.id_parent, parent.status
+    FROM todotree_node AS parent
+    JOIN ancestors AS child ON child.id_parent = parent.id
+  )
+  SELECT id FROM ancestors WHERE status = 7 LIMIT 1
+`);
+const completedAncestorsRun = database.prepare(`
+  WITH RECURSIVE ancestors(id, id_parent) AS (
+    SELECT id, id_parent FROM todotree_node WHERE id = ?
+    UNION ALL
+    SELECT parent.id, parent.id_parent
+    FROM todotree_node AS parent
+    JOIN ancestors AS child ON child.id_parent = parent.id
+  )
+  UPDATE todotree_node
+  SET status = 4
+  WHERE status = 7 AND id IN (SELECT id FROM ancestors)
 `);
 const childNodes = database.prepare(`
   SELECT id, id_parent, title, template, status, agent
@@ -360,6 +369,9 @@ const store = {
     const optionsValue = validator.add.parse(options);
     const parentNode = nodeRead(optionsValue.id_parent);
     nodePlacementValidate(parentNode, optionsValue);
+    if (optionsValue.status !== 7 && completedAncestor.get(parentNode.id)) {
+      throw new Error("已完成节点的后代必须保持已完成状态。");
+    }
     const result = nodeInsert.run(
       optionsValue.id_parent,
       optionsValue.title,
@@ -389,6 +401,16 @@ const store = {
       ...currentNode,
       ...optionsValue,
     });
+    if (nextNode.status === 7 && unfinishedDescendant.get(nextNode.id)) {
+      throw new Error("存在未完成后代时，节点不能设为已完成。");
+    }
+    if (
+      nextNode.status !== 7
+      && currentNode.id_parent !== null
+      && completedAncestor.get(currentNode.id_parent)
+    ) {
+      throw new Error("已完成节点的后代必须保持已完成状态。");
+    }
     nodeUpdate.run(
       nextNode.title,
       nextNode.template,
@@ -400,6 +422,9 @@ const store = {
   }),
   projectRegister: database.transaction((value: string) => {
     const path = workspacePathRead(value);
+    if (existsSync(join(path, "pnpm-workspace.yaml"))) {
+      throw new Error("pnpm workspace 容器不能登记为具体项目。");
+    }
     const current = projectByPath.get(path);
     const projectNode = current
       ? databaseNodeRead(current)
@@ -411,7 +436,7 @@ const store = {
     const projectNode = projectRead(value);
     return projectTreeRead(projectNode.id);
   },
-  conversationInit: (options: z.input<typeof validator.conversationInit>) => {
+  conversationInit: database.transaction((options: z.input<typeof validator.conversationInit>) => {
     const optionsValue = validator.conversationInit.parse(options);
     const project = store.projectResolve(optionsValue.workspacePath);
     let idParent = project.projectId;
@@ -426,6 +451,7 @@ const store = {
         throw new Error("conversation.init 的 memberId 必须指向 typescript 成员节点。");
       }
       idParent = memberNode.id;
+      completedAncestorsRun.run(memberNode.id);
     }
     const conversation = store.add({
       id_parent: idParent,
@@ -442,7 +468,7 @@ const store = {
         [conversation.id]: conversation,
       },
     };
-  },
+  }),
   projectTree: (value: string) => {
     const projectNode = projectRead(value);
     return projectTreeRead(projectNode.id);

@@ -5,6 +5,7 @@ export default createHashRouter([
   {
     path: "/",
     element: <App />,
+    HydrateFallback: () => null,
     children: [
       {
         path: ":nodeId",

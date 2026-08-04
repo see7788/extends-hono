@@ -1,25 +1,26 @@
 import { FormOutlined } from "@ant-design/icons";
-import { Button, Flex, Tree, Typography, type TreeDataNode } from "antd";
+import { Button, Flex, theme, Tree, Typography, type TreeDataNode } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
+import { statusOptions } from "todo-mcp-node/src/todotree/contract.ts";
 import type { TodoTreeNode } from "todo-mcp-node/src/todotree/store.ts";
 import store from "../store.ts";
 import Title from "./Title.tsx";
-import { statusLabelRead } from "./status.ts";
-const agentLabelByAgent: Record<TodoTreeNode["agent"], string> = {
-  1: "parent",
-  2: "worker",
-  3: "indexer",
-  4: "tokener",
-};
 
 export default function App() {
+  const { token } = theme.useToken();
   const todotree = store(state => state.todotree);
+  const todotreeRecent = store(state => state.todotreeRecent);
   const navigate = useNavigate();
-  const [loadedNodeIds, loadedNodeIdsSet] = useState<ReadonlySet<number>>(new Set());
+  const [expandedNodeIds, expandedNodeIdsSet] = useState<ReadonlySet<number>>(new Set());
   const [hoveredNodeId, hoveredNodeIdSet] = useState<number>();
   useEffect(() => store.getState().todotreeActions.connect(), []);
   const nodesById = todotree?.treeData.nodesById;
+  const statusLabelRead = (status: TodoTreeNode["status"]) => {
+    const option = statusOptions.find(value => value.value === status);
+    if (!option) throw new Error(`TodoTree status does not exist: ${String(status)}`);
+    return option.label;
+  };
   const nodesByParentId = useMemo(() => {
     const nodes = new Map<number | null, TodoTreeNode[]>();
     for (const node of Object.values(nodesById ?? {})) {
@@ -35,10 +36,10 @@ export default function App() {
   const nodeChildren = (id: number) => nodesByParentId.get(id) ?? [];
   const treeNode = (
     node: TodoTreeNode,
-    childrenShow = loadedNodeIds.has(node.id),
+    childrenShow = expandedNodeIds.has(node.id),
   ): TreeDataNode => {
     const children = nodeChildren(node.id);
-    const drawerAvailable = node.id !== 1 && children.length === 0;
+    const drawerAvailable = node.id !== 1;
     const drawerOpen = () => void navigate(`/${String(node.id)}`);
     return {
       key: node.id,
@@ -51,49 +52,88 @@ export default function App() {
           onMouseEnter={() => hoveredNodeIdSet(node.id)}
           onMouseLeave={() => hoveredNodeIdSet(undefined)}
         >
-          {drawerAvailable && (
-            <Typography.Text type="secondary">
-              {`${statusLabelRead(node.status)} · `}
-              {agentLabelByAgent[node.agent]}
+          {drawerAvailable && hoveredNodeId !== node.id && (
+            <Typography.Text style={{ whiteSpace: "nowrap" }} type="secondary">
+              {statusLabelRead(node.status)}
             </Typography.Text>
           )}
-          <Title {...node} />
           {drawerAvailable && hoveredNodeId === node.id && (
-            <Button
-              aria-label="打开节点抽屉"
-              icon={<FormOutlined />}
-              onClick={event => {
-                event.stopPropagation();
-                drawerOpen();
-              }}
-              size="small"
-              type="text"
-            />
+            <Flex align="center" gap="small">
+              <Typography.Text type="secondary">#{String(node.id)}</Typography.Text>
+              <Button
+                aria-label="打开节点抽屉"
+                icon={<FormOutlined />}
+                onClick={event => {
+                  event.stopPropagation();
+                  drawerOpen();
+                }}
+                size="small"
+                type="text"
+              />
+            </Flex>
           )}
+          <Title {...node} />
         </Flex>
       ),
       children: childrenShow ? children.map(child => treeNode(child)) : undefined,
     };
   };
   const root = nodesById?.[1];
-  const treeData = root ? [treeNode(root, true)] : [];
+  const treeData = root ? nodeChildren(root.id).map(nodeValue => treeNode(nodeValue)) : [];
+  const nodeOpen = (id: number) => {
+    const expanded = new Set(expandedNodeIds);
+    let current = nodesById?.[id];
+    while (current?.id_parent !== null && current?.id_parent !== undefined) {
+      const parent = nodesById?.[current.id_parent];
+      if (!parent) break;
+      expanded.add(parent.id);
+      current = parent;
+    }
+    expandedNodeIdsSet(expanded);
+    store.getState().todotreeActions.nodeRead(id);
+    void navigate(`/${String(id)}`);
+  };
 
   return (
-    <Flex vertical>
-      <Typography.Title level={5}>
-        TodoTree #{String(todotree?.treeDataMaxId ?? 0)}
-      </Typography.Title>
+    <Flex
+      style={{
+        background: token.colorBgContainer,
+        boxSizing: "border-box",
+        minHeight: "100vh",
+        padding: token.padding,
+        paddingRight: 48,
+      }}
+      vertical
+    >
       {root && (
         <Tree
           blockNode
-          defaultExpandedKeys={[1]}
-          loadData={async node => {
-            loadedNodeIdsSet(current => new Set(current).add(Number(node.key)));
+          expandedKeys={[...expandedNodeIds]}
+          onExpand={keys => {
+            expandedNodeIdsSet(new Set(keys.map(Number)));
           }}
           selectable={false}
           treeData={treeData}
         />
       )}
+      <Flex
+        gap={2}
+        style={{ position: "fixed", right: token.marginXS, top: token.marginXS, zIndex: 10 }}
+        vertical
+      >
+        {todotreeRecent.map(recent => (
+          <Button
+            key={recent.id}
+            onClick={() => nodeOpen(recent.id)}
+            size="small"
+            style={{ color: recent.unread ? token.colorPrimary : undefined }}
+            title={nodesById?.[recent.id]?.title}
+            type="text"
+          >
+            {recent.id}
+          </Button>
+        ))}
+      </Flex>
       <Outlet />
     </Flex>
   );
