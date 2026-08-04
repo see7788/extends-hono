@@ -3,7 +3,7 @@ packages:
   - "libs/*"
   - "../extends-zustand"
   - "../extends-antd"
-  - "../extends-ssh"
+  - "../extends-ssh/ubuntu-lib"
   - "../remote-runtimeobj/webrtcsignaling"
   - "../create-todo-cli/mcpCreate"
   - "../create-todo-cli/src"

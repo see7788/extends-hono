@@ -1,4 +1,4 @@
-import ubuntu from "extends-ssh/Ubuntu/index.ts";
+import ubuntu from "ubuntu-lib/index.ts";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 

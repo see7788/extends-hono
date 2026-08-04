@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import ubuntu from "extends-ssh/Ubuntu/index.ts";
+import ubuntu from "ubuntu-lib/index.ts";
 import { Hono } from "hono";
 import { readFile } from "node:fs/promises";
 

@@ -1,7 +1,7 @@
 /** @jsxImportSource hono/jsx */
 import { Hono } from "hono";
 import * as React from "hono/jsx";
-import Pm2 from "extends-ssh/Ubuntu/Pm2.ts";
+import Pm2 from "ubuntu-lib/Pm2.ts";
 import store from "./store.ts";
 import type { NodeServiceState } from "./nodeService.ts";
 

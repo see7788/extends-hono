@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.0.12",
-    "extends-ssh": "workspace:*",
+    "ubuntu-lib": "workspace:*",
     "extends-zustand": "workspace:*",
     "hono": "^4.12.33",
     "immer": "10.2.0",
@@ -22,7 +22,7 @@
     "zustand": "5.0.13"
   },
   "dependenciesMeta": {
-    "extends-ssh": {
+    "ubuntu-lib": {
       "injected": true
     },
     "extends-zustand": {
