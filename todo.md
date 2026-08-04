@@ -4,10 +4,10 @@
 	- [x] 刷新页面后确认浏览器不再加载 `better-sqlite3`、`node:fs` 等 Node 专用依赖。
 	- [x] 确认状态、执行者和渲染模板均由 `contract.ts` 的验证器生产类型与共享映射。
 	- [x] 确认 Hono、MCP JSON Schema 和页面消费同一映射，没有重复数字表或接口传递层。
-- [ ] 完成 MCP 新会话契约验收
-	- [ ] 新会话重新连接后确认 `node.add`、`node.set` 的 `status` 明确显示全部数字含义。
+- [x] 完成 MCP 新会话契约验收
+	- [x] 新会话重新连接后确认 `node.add`、`node.set` 的 `status` 明确显示全部数字含义。
 	- [x] 当前成品契约确认 `agent` 只允许 `1 parent`，已移除工作队状态与执行者的旧契约。
-	- [ ] 恢复使用当前 `conversation.init`、`project.tree` 和节点接口维护真实项目树。
+	- [x] 恢复使用当前 `conversation.init`、`project.tree` 和节点接口维护真实项目树。
 - [x] 完成 Tree 页面交互验收
 	- [x] 确认隐藏数据根节点和无意义总数标题，首页直接显示各具体项目。
 	- [x] 确认节点默认显示状态，悬停后在左侧显示 ID 与编辑图标。
