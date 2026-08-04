@@ -3,9 +3,92 @@ import { Button, Flex, FloatButton, theme, Tree, Typography, type TreeDataNode }
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { statusOptions } from "todo-mcp-node/src/todotree/contract.ts";
-import type { TodoTreeNode } from "todo-mcp-node/src/todotree/store.ts";
+import type { TodoTreeNode, TodoTreeState } from "todo-mcp-node/src/todotree/store.ts";
 import store from "../store.ts";
 import Title from "./Title.tsx";
+
+const statusOrder = new Map(statusOptions.map((option, index) => [option.value, index]));
+const statusLabelRead = (status: TodoTreeNode["status"]) => {
+  const option = statusOptions.find(value => value.value === status);
+  if (!option) throw new Error(`TodoTree status does not exist: ${String(status)}`);
+  return option.label;
+};
+
+function TreeTitle({
+  attention,
+  drawerOpen,
+  node,
+  revealed,
+}: {
+  attention?: TodoTreeState["projectAttentionById"][number];
+  drawerOpen(): void;
+  node: TodoTreeNode;
+  revealed: boolean;
+}) {
+  const { token } = theme.useToken();
+  const [hovered, hoveredSet] = useState(false);
+  const attentionStatuses = attention ? [
+    { count: attention.decisionCount, status: 1 as const },
+    { count: attention.todoCount, status: 2 as const },
+    { count: attention.runningCount, status: 4 as const },
+    { count: attention.blockedCount, status: 8 as const },
+  ].filter(value => value.count > 0) : [];
+
+  return (
+    <Flex
+      align="center"
+      data-todotree-node-id={node.id}
+      gap="small"
+      onDoubleClick={drawerOpen}
+      onMouseEnter={() => hoveredSet(true)}
+      onMouseLeave={() => hoveredSet(false)}
+      style={revealed ? {
+        background: token.colorPrimaryBg,
+        borderRadius: token.borderRadiusSM,
+        boxShadow: `0 0 0 1px ${token.colorPrimary}`,
+      } : undefined}
+    >
+      {!hovered && node.template !== "project" && (
+        <Typography.Text style={{ whiteSpace: "nowrap" }} type="secondary">
+          {statusLabelRead(node.status)}
+        </Typography.Text>
+      )}
+      {hovered && (
+        <Flex align="center" gap="small">
+          <Typography.Text type="secondary">#{String(node.id)}</Typography.Text>
+          <Button
+            aria-label="打开节点抽屉"
+            icon={<FormOutlined />}
+            onClick={event => {
+              event.stopPropagation();
+              drawerOpen();
+            }}
+            size="small"
+            type="text"
+          />
+        </Flex>
+      )}
+      <Title {...node} />
+      {!hovered && node.template === "project" && attentionStatuses.length === 0 && (
+        <Typography.Text style={{ whiteSpace: "nowrap" }} type="secondary">
+          {statusLabelRead(node.status)}
+        </Typography.Text>
+      )}
+      {attentionStatuses.map(value => (
+        <Typography.Text
+          key={value.status}
+          style={{
+            color: value.status === 1 ? token.colorSuccess : undefined,
+            whiteSpace: "nowrap",
+          }}
+          type={value.status === 1 ? undefined : "secondary"}
+        >
+          {statusLabelRead(value.status)} {value.count}
+        </Typography.Text>
+      ))}
+    </Flex>
+  );
+}
 
 export default function App() {
   const { token } = theme.useToken();
@@ -14,15 +97,10 @@ export default function App() {
   const navigate = useNavigate();
   const [expandedNodeIds, expandedNodeIdsSet] = useState<ReadonlySet<number>>(new Set());
   const [revealedNodeId, revealedNodeIdSet] = useState<number>();
-  const [hoveredNodeId, hoveredNodeIdSet] = useState<number>();
+  const [sortMode, sortModeSet] = useState<"id" | "path" | "status">("path");
   const [statusFilter, statusFilterSet] = useState<"all" | TodoTreeNode["status"]>("all");
   useEffect(() => store.getState().todotreeActions.connect(), []);
   const nodesById = todotree?.treeData.nodesById;
-  const statusLabelRead = (status: TodoTreeNode["status"]) => {
-    const option = statusOptions.find(value => value.value === status);
-    if (!option) throw new Error(`TodoTree status does not exist: ${String(status)}`);
-    return option.label;
-  };
   const nodesByParentId = useMemo(() => {
     const nodes = new Map<number | null, TodoTreeNode[]>();
     for (const node of Object.values(nodesById ?? {})) {
@@ -31,10 +109,19 @@ export default function App() {
       nodes.set(node.id_parent, siblings);
     }
     for (const siblings of nodes.values()) {
-      siblings.sort((left, right) => left.id - right.id);
+      siblings.sort((left, right) => {
+        if (sortMode === "path" && left.id_parent === 1) {
+          return left.title.localeCompare(right.title) || left.id - right.id;
+        }
+        if (sortMode === "status") {
+          return (statusOrder.get(left.status) ?? 0) - (statusOrder.get(right.status) ?? 0)
+            || left.id - right.id;
+        }
+        return left.id - right.id;
+      });
     }
     return nodes;
-  }, [nodesById]);
+  }, [nodesById, sortMode]);
   const filteredNodeIds = useMemo(() => {
     if (statusFilter === "all") return new Set<number>();
     const ids = new Set<number>();
@@ -69,72 +156,16 @@ export default function App() {
     const attention = node.template === "project"
       ? todotree?.projectAttentionById[node.id]
       : undefined;
-    const attentionStatuses = attention ? [
-      { count: attention.decisionCount, status: 1 as const },
-      { count: attention.todoCount, status: 2 as const },
-      { count: attention.runningCount, status: 4 as const },
-      { count: attention.blockedCount, status: 8 as const },
-    ].filter(value => value.count > 0) : [];
     return {
       key: node.id,
       isLeaf: children.length === 0,
-      title: (
-        <Flex
-          align="center"
-          data-todotree-node-id={node.id}
-          gap="small"
-          onDoubleClick={drawerAvailable ? drawerOpen : undefined}
-          onMouseEnter={() => hoveredNodeIdSet(node.id)}
-          onMouseLeave={() => hoveredNodeIdSet(undefined)}
-          style={revealedNodeId === node.id ? {
-            background: token.colorPrimaryBg,
-            borderRadius: token.borderRadiusSM,
-            boxShadow: `0 0 0 1px ${token.colorPrimary}`,
-          } : undefined}
-        >
-          {drawerAvailable && hoveredNodeId !== node.id && node.template !== "project" && (
-            <Typography.Text style={{ whiteSpace: "nowrap" }} type="secondary">
-              {statusLabelRead(node.status)}
-            </Typography.Text>
-          )}
-          {drawerAvailable && hoveredNodeId === node.id && (
-            <Flex align="center" gap="small">
-              <Typography.Text type="secondary">#{String(node.id)}</Typography.Text>
-              <Button
-                aria-label="打开节点抽屉"
-                icon={<FormOutlined />}
-                onClick={event => {
-                  event.stopPropagation();
-                  drawerOpen();
-                }}
-                size="small"
-                type="text"
-              />
-            </Flex>
-          )}
-          <Title {...node} />
-          {drawerAvailable
-            && hoveredNodeId !== node.id
-            && node.template === "project"
-            && attentionStatuses.length === 0
-            && (
-            <Typography.Text style={{ whiteSpace: "nowrap" }} type="secondary">
-              {statusLabelRead(node.status)}
-            </Typography.Text>
-          )}
-          {attentionStatuses.map(value => (
-            <Typography.Text
-              key={value.status}
-              style={{
-                color: value.status === 1 ? token.colorSuccess : undefined,
-                whiteSpace: "nowrap",
-              }}
-              type={value.status === 1 ? undefined : "secondary"}
-            >
-              {statusLabelRead(value.status)} {value.count}
-            </Typography.Text>
-          ))}
-        </Flex>
+      title: drawerAvailable && (
+        <TreeTitle
+          attention={attention}
+          drawerOpen={drawerOpen}
+          node={node}
+          revealed={revealedNodeId === node.id}
+        />
       ),
       children: childrenShow ? children.map(child => treeNode(child)) : undefined,
     };
@@ -176,6 +207,7 @@ export default function App() {
         <Tree
           blockNode
           expandedKeys={[...(statusFilter === "all" ? expandedNodeIds : filteredNodeIds)]}
+          height={Math.max(240, window.innerHeight - token.padding * 2)}
           onExpand={keys => {
             if (statusFilter !== "all") return;
             expandedNodeIdsSet(new Set(keys.map(Number)));
@@ -237,6 +269,31 @@ export default function App() {
             />
           );
         })}
+      </FloatButton.Group>
+      <FloatButton.Group
+        closeIcon={false}
+        content="排序"
+        icon={false}
+        shape="square"
+        style={{ right: token.marginXS + 56 }}
+        trigger="click"
+      >
+        {([
+          { label: "路径", value: "path" },
+          { label: "状态", value: "status" },
+          { label: "编号", value: "id" },
+        ] as const).map(({ label, value }) => (
+          <FloatButton
+            content={label}
+            key={value}
+            onClick={() => sortModeSet(value)}
+            style={sortMode === value ? {
+              background: token.colorSuccess,
+              borderColor: token.colorSuccess,
+              color: token.colorTextLightSolid,
+            } : {}}
+          />
+        ))}
       </FloatButton.Group>
       <Outlet />
     </Flex>
