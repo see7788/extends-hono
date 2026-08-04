@@ -69,6 +69,12 @@ export default function App() {
     const attention = node.template === "project"
       ? todotree?.projectAttentionById[node.id]
       : undefined;
+    const attentionStatuses = attention ? [
+      { count: attention.decisionCount, status: 1 as const },
+      { count: attention.todoCount, status: 2 as const },
+      { count: attention.runningCount, status: 4 as const },
+      { count: attention.blockedCount, status: 8 as const },
+    ].filter(value => value.count > 0) : [];
     return {
       key: node.id,
       isLeaf: children.length === 0,
@@ -112,11 +118,21 @@ export default function App() {
               {statusLabelRead(node.status)}
             </Typography.Text>
           )}
-          {attention && attention.decisionCount > 0 && (
-            <Typography.Text style={{ color: token.colorSuccess, whiteSpace: "nowrap" }}>
-              待决策 {attention.decisionCount}
-            </Typography.Text>
+          {attentionStatuses.length > 0 && (
+            <Typography.Text type="secondary">子项</Typography.Text>
           )}
+          {attentionStatuses.map(value => (
+            <Typography.Text
+              key={value.status}
+              style={{
+                color: value.status === 1 ? token.colorSuccess : undefined,
+                whiteSpace: "nowrap",
+              }}
+              type={value.status === 1 ? undefined : "secondary"}
+            >
+              {statusLabelRead(value.status)} {value.count}
+            </Typography.Text>
+          ))}
         </Flex>
       ),
       children: childrenShow ? children.map(child => treeNode(child)) : undefined,
