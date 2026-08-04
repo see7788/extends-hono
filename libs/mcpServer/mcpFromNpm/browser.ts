@@ -10,7 +10,6 @@ const browser = new RegisterFromNpm({ namespace: "browser" }).registerPkg({
     args: [
       "dlx",
       "chrome-devtools-mcp@1.6.0",
-      "--headless=true",
       "--isolated=true",
       "--no-usage-statistics",
       "--no-performance-crux",
