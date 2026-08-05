@@ -1,5 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { streamSSE, type SSEStreamingApi } from "hono/streaming";
 import { z } from "zod";
@@ -9,6 +9,25 @@ import { templateOptions } from "./contract.ts";
 import store, { validator } from "./store.ts";
 
 const agentMeInput = z.object({});
+type TodoTreeEnv = { Bindings: Partial<McpServerBindings> };
+const conversationAssert = (context: Context<TodoTreeEnv>) => {
+  const mcpServer = context.env.mcpServer;
+  if (!mcpServer) return;
+  const sessionId = mcpServer.sessionId;
+  if (!sessionId) {
+    throw new HTTPException(409, {
+      message: "当前 MCP transport 未提供 sessionId，不能验证 TodoTree 会话。",
+    });
+  }
+  try {
+    mcpServer.agentRuntimeActions.sessionGet(sessionId);
+  } catch (cause) {
+    throw new HTTPException(409, {
+      cause,
+      message: "当前 MCP 会话尚未调用 conversation.init。",
+    });
+  }
+};
 const streams = new Set<SSEStreamingApi>();
 const eventSend = async ({
   data,
@@ -60,10 +79,11 @@ export default new Register({
 })
   .register(
     "/node/add",
-    new Hono().post(
+    new Hono<TodoTreeEnv>().post(
       "/",
       zValidator("json", validator.add),
       async context => {
+        conversationAssert(context);
         const options = context.req.valid("json");
         const nodeValue = store.add(options);
         await eventSend({ event: "add", data: nodeValue });
@@ -82,17 +102,18 @@ export default new Register({
   )
   .register(
     "/node/batch",
-    new Hono().post(
+    new Hono<TodoTreeEnv>().post(
       "/",
       zValidator("json", validator.batch),
       async context => {
+        conversationAssert(context);
         const nodes = store.batch(context.req.valid("json"));
         await eventSend({ event: "tree", data: store.tree() });
         return context.json(nodes, 200);
       },
     ),
     validator.batch,
-    "人类与 AI 共用：在一个 SQLite transaction 中递归新增一批节点；任一节点失败时整批不写入。",
+    "人类与 AI 共用：在一个 SQLite transaction 中递归新增一批节点；任一节点失败时整批不写入；MCP 调用必须先完成 conversation.init。",
     {
       readOnlyHint: false,
       destructiveHint: false,
@@ -102,10 +123,11 @@ export default new Register({
   )
   .register(
     "/node/del",
-    new Hono().post(
+    new Hono<TodoTreeEnv>().post(
       "/",
       zValidator("json", validator.del),
       async context => {
+        conversationAssert(context);
         const { id } = context.req.valid("json");
         const ids = store.del(id);
         const result = { ids };
@@ -115,7 +137,7 @@ export default new Register({
       },
     ),
     validator.del,
-    "人类与 AI 共用：删除指定节点及其全部子节点，并返回被删除的节点 ID。AI 只能删除当前已解析项目内部节点。",
+    "人类与 AI 共用：删除指定节点及其全部子节点，并返回被删除的节点 ID；MCP 调用必须先完成 conversation.init。",
     {
       readOnlyHint: false,
       destructiveHint: true,
@@ -125,10 +147,11 @@ export default new Register({
   )
   .register(
     "/node/move",
-    new Hono().post(
+    new Hono<TodoTreeEnv>().post(
       "/",
       zValidator("json", validator.move),
       async context => {
+        conversationAssert(context);
         const nodeValue = store.move(context.req.valid("json"));
         await eventSend({ event: "set", data: nodeValue });
         await eventSend({ event: "attention", data: store.projectAttentionList() });
@@ -136,7 +159,7 @@ export default new Register({
       },
     ),
     validator.move,
-    "人类与 AI 共用：把非项目节点迁移到同一具体项目的新父节点，并维护层级、循环与完成状态不变量。",
+    "人类与 AI 共用：把非项目节点迁移到同一具体项目的新父节点，并维护层级、循环与完成状态不变量；MCP 调用必须先完成 conversation.init。",
     {
       readOnlyHint: false,
       destructiveHint: false,
@@ -146,10 +169,11 @@ export default new Register({
   )
   .register(
     "/node/set",
-    new Hono().post(
+    new Hono<TodoTreeEnv>().post(
       "/",
       zValidator("json", validator.set),
       async context => {
+        conversationAssert(context);
         const options = context.req.valid("json");
         const nodeValue = store.set(options);
         await eventSend({ event: "set", data: nodeValue });
@@ -158,7 +182,7 @@ export default new Register({
       },
     ),
     validator.set,
-    "人类与 AI 共用：修改指定节点并返回修改后的正式节点数据。status <= 6 表示未收口，status > 6 表示收口；AI 只能修改当前已解析项目内部节点。",
+    "人类与 AI 共用：修改指定节点并返回修改后的正式节点数据。status <= 6 表示未收口，status > 6 表示收口；MCP 调用必须先完成 conversation.init。",
     {
       readOnlyHint: false,
       destructiveHint: false,
@@ -247,13 +271,16 @@ export default new Register({
   )
   .register(
     "/workspace/relation/add",
-    new Hono().post(
+    new Hono<TodoTreeEnv>().post(
       "/",
       zValidator("json", validator.projectRelation),
-      context => context.json(store.workspaceRelationAdd(context.req.valid("json")), 200),
+      context => {
+        conversationAssert(context);
+        return context.json(store.workspaceRelationAdd(context.req.valid("json")), 200);
+      },
     ),
     validator.projectRelation,
-    "人类与 AI 共用：在两个已登记具体项目之间新增一条有向跨库关系。",
+    "人类与 AI 共用：在两个已登记具体项目之间新增一条有向跨库关系；MCP 调用必须先完成 conversation.init。",
     {
       readOnlyHint: false,
       destructiveHint: false,
@@ -263,13 +290,16 @@ export default new Register({
   )
   .register(
     "/workspace/relation/del",
-    new Hono().post(
+    new Hono<TodoTreeEnv>().post(
       "/",
       zValidator("json", validator.projectRelation),
-      context => context.json(store.workspaceRelationDel(context.req.valid("json")), 200),
+      context => {
+        conversationAssert(context);
+        return context.json(store.workspaceRelationDel(context.req.valid("json")), 200);
+      },
     ),
     validator.projectRelation,
-    "人类与 AI 共用：删除两个已登记具体项目之间的一条有向跨库关系。",
+    "人类与 AI 共用：删除两个已登记具体项目之间的一条有向跨库关系；MCP 调用必须先完成 conversation.init。",
     {
       readOnlyHint: false,
       destructiveHint: true,

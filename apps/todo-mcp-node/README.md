@@ -20,16 +20,16 @@ todo-mcp-node/
 │       │   └── contractValidator                   // 交付 agent、status 与 template 的唯一验证器
 │       ├── index.ts
 │       │   └── default: Register
-│       │       ├── node.add.POST                    // 新增一个节点并推送正式节点
-│       │       ├── node.batch.POST                  // 在一个事务中新增完整节点树
-│       │       ├── node.del.POST                    // 删除节点树并推送正式 ID 集合
-│       │       ├── node.move.POST                   // 移动节点及其完整子树
-│       │       ├── node.set.POST                    // 修改节点并推送正式节点
-│       │       ├── conversation.init.POST           // 用项目路径与真实窗口 cwd 建立交流并绑定在线 AI
+│       │       ├── node.add.POST                    // 准入后新增一个节点并推送正式节点
+│       │       ├── node.batch.POST                  // 准入后在一个事务中新增完整节点树
+│       │       ├── node.del.POST                    // 准入后删除节点树并推送正式 ID 集合
+│       │       ├── node.move.POST                   // 准入后移动节点及其完整子树
+│       │       ├── node.set.POST                    // 准入后修改节点并推送正式节点
+│       │       ├── conversation.init.POST           // 唯一生产命名空间准入、具体成员任务与在线 AI
 │       │       ├── agent.me.POST                    // 读取当前在线 AI 编号、路径和项目
 │       │       ├── workspace.tree.POST              // 聚合容器内全部已登记项目及跨项目关系
-│       │       ├── workspace.relation.add.POST      // 新增跨项目关系
-│       │       ├── workspace.relation.del.POST      // 删除跨项目关系
+│       │       ├── workspace.relation.add.POST      // 准入后新增跨项目关系
+│       │       ├── workspace.relation.del.POST      // 准入后删除跨项目关系
 │       │       ├── project.attention.POST           // 读取项目后代节点派生的关注数量
 │       │       ├── project.maintenance.POST         // 读取路径失效项目并交付迁移维护清单
 │       │       ├── project.resolve.POST             // 把任意项目内路径解析到唯一项目
@@ -68,4 +68,4 @@ todo-mcp-node/
 pnpm --filter todo-mcp-node dev
 ```
 
-TodoTree 页面位于 `http://127.0.0.1:3005/todotree/`，MCP 位于 `http://127.0.0.1:3005/todo-mcp`；SQLite 位于 `join(homedir(), ".store", md5(projectPath), "store.sqlite")`。项目行显示在线 AI 的 `#编号`，悬停编号可读取该 VS Code 窗口的完整工作路径。
+TodoTree 页面位于 `http://127.0.0.1:3005/todotree/`，MCP 位于 `http://127.0.0.1:3005/todo-mcp`；SQLite 位于 `join(homedir(), ".store", md5(projectPath), "store.sqlite")`。项目行显示在线 AI 的 `#编号`，悬停编号可读取该 VS Code 窗口的完整工作路径。MCP 可在初始化前读取项目书并选择具体成员；节点和跨项目关系写入必须消费 `conversation.init` 生产的当前 session 准入，普通 Hono 页面调用不受该限制。
