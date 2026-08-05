@@ -15,7 +15,7 @@ todotree/
 │       ├── store.ts
 │       │   └── default: ImmerStateCreator<TodoTreeStore>
 │       │                                              // 接收任务树、最近节点和在线 AI 的 SSE
-│       ├── index.tsx                                  // 虚拟渲染 Tree、筛选、排序及在线 AI 编号
+│       ├── index.tsx                                  // 虚拟渲染 Tree、筛选及在线 AI 编号；同级节点默认标题升序
 │       ├── Title.tsx                                  // 按节点 template 呈现标题
 │       └── Drawer.tsx                                 // 呈现并修改当前节点
 ├── index.html                                      // Vite 页面入口
@@ -28,4 +28,4 @@ todotree/
 pnpm --filter todo-mcp-node dev
 ```
 
-打开 `http://127.0.0.1:3005/todotree/`；页面与 AI MCP 消费同一组 TodoTree Hono action，服务端通过 SSE 主动交付任务树和在线 AI 变化。右下角方形悬浮按钮组可按路径、状态或编号排序；路径排序会让同一 pnpm 容器内的项目相邻。
+打开 `http://127.0.0.1:3005/todotree/`；页面与 AI MCP 消费同一组 TodoTree Hono action，服务端通过 SSE 主动交付任务树和在线 AI 变化。所有同级节点默认按标题升序排列，树的父子关系不变；右下角方形悬浮按钮组只负责筛选。

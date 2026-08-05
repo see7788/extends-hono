@@ -52,7 +52,7 @@ project/
 
 错误：把 project、public、feature 等路径片段逐层建立为目录节点，再把 index.ts 或 web.ts 放到目录节点下面；只写签名却省略用途与直接消费链；把私有成员或无消费者的导出写进项目书。
 
-交流规则：status: 1 只表示需要人类回答的决策，必须处于受影响的 typescript 公开成员后代；AI 应一次性列出当前已知的全部决策。status: 2 只表示 AI 自己的实现待办，不要求人类回复。status <= 6 表示未收口，status > 6 统一表示收口；7 是正常完成，8 是阻塞收口，9 是取消收口。人类回答后，AI 立即把对应决策改为已完成或已取消。每次回复前调用 project.attention；第一行只写全部待决策 ID，例如“待你决策：#12、#15”，没有待决策时只写“无”。项目根 status 只表达项目生命周期，严禁因存在决策而修改项目根。`;
+交流规则：status: 1 只表示需要人类回答的待定事项，必须处于受影响的 typescript 公开成员后代；AI 应一次性列出当前已知的全部待定事项。status: 2 只表示 AI 自己的实现待办，不要求人类回复。status <= 6 表示未收口，status > 6 统一表示收口；7 完成是正常收口，8 阻塞收口，9 取消收口。人类回答后，AI 立即把对应待定事项改为完成或取消。每次回复前调用 project.attention；第一行只写全部待定 ID，例如“待你决策：#12、#15”，没有待定时只写“无”。项目根 status 只表达项目生命周期，严禁因存在待定事项而修改项目根。`;
 
 export default new Register({
   namespace: "todo-mcp-node",
@@ -285,7 +285,7 @@ export default new Register({
       context => context.json(store.projectAttention(context.req.valid("json").workspacePath), 200),
     ),
     validator.projectResolve,
-    "实时读取当前项目后代节点派生的决策、阻塞、工作中和待办数量。项目根状态不参与计数，也不会被改写。AI 每次回复前调用本接口：decisionIds 非空时第一行列出全部待决策 ID，否则第一行只写“无”。",
+    "实时读取当前项目后代节点派生的待定、阻塞、工作中和待办数量。项目根状态不参与计数，也不会被改写。AI 每次回复前调用本接口：decisionIds 非空时第一行列出全部待定 ID，否则第一行只写“无”。",
     {
       readOnlyHint: true,
       destructiveHint: false,

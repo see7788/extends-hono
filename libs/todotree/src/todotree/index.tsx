@@ -20,7 +20,6 @@ import type { TodoTreeNode, TodoTreeState } from "todo-mcp-node/src/todotree/sto
 import store from "../store.ts";
 import Title from "./Title.tsx";
 
-const statusOrder = new Map(statusOptions.map((option, index) => [option.value, index]));
 const statusLabelRead = (status: TodoTreeNode["status"]) => {
   const option = statusOptions.find(value => value.value === status);
   if (!option) throw new Error(`TodoTree status does not exist: ${String(status)}`);
@@ -122,7 +121,6 @@ export default function App() {
   const navigate = useNavigate();
   const [expandedNodeIds, expandedNodeIdsSet] = useState<ReadonlySet<number>>(new Set());
   const [revealedNodeId, revealedNodeIdSet] = useState<number>();
-  const [sortMode, sortModeSet] = useState<"id" | "path" | "status">("path");
   const [statusFilter, statusFilterSet] = useState<"all" | TodoTreeNode["status"]>("all");
   useEffect(() => store.getState().todotreeActions.connect(), []);
   const nodesById = todotree?.treeData.nodesById;
@@ -134,19 +132,10 @@ export default function App() {
       nodes.set(node.id_parent, siblings);
     }
     for (const siblings of nodes.values()) {
-      siblings.sort((left, right) => {
-        if (sortMode === "path" && left.id_parent === 1) {
-          return left.title.localeCompare(right.title) || left.id - right.id;
-        }
-        if (sortMode === "status") {
-          return (statusOrder.get(left.status) ?? 0) - (statusOrder.get(right.status) ?? 0)
-            || left.id - right.id;
-        }
-        return left.id - right.id;
-      });
+      siblings.sort((left, right) => left.title.localeCompare(right.title) || left.id - right.id);
     }
     return nodes;
-  }, [nodesById, sortMode]);
+  }, [nodesById]);
   const filteredNodeIds = useMemo(() => {
     if (statusFilter === "all") return new Set<number>();
     const ids = new Set<number>();
@@ -311,31 +300,6 @@ export default function App() {
             />
           );
         })}
-      </FloatButton.Group>
-      <FloatButton.Group
-        closeIcon={false}
-        content="排序"
-        icon={false}
-        shape="square"
-        style={{ right: token.marginXS + 56 }}
-        trigger="click"
-      >
-        {([
-          { label: "路径", value: "path" },
-          { label: "状态", value: "status" },
-          { label: "编号", value: "id" },
-        ] as const).map(({ label, value }) => (
-          <FloatButton
-            content={label}
-            key={value}
-            onClick={() => sortModeSet(value)}
-            style={sortMode === value ? {
-              background: token.colorSuccess,
-              borderColor: token.colorSuccess,
-              color: token.colorTextLightSolid,
-            } : {}}
-          />
-        ))}
       </FloatButton.Group>
       <Outlet />
     </Flex>

@@ -683,7 +683,7 @@ const store = {
       decisionPlacementValidate(nodeRead(nextNode.id_parent));
     }
     if (nextNode.status === 7 && unfinishedDescendant.get(nextNode.id)) {
-      throw new HTTPException(409, { message: "存在 status <= 6 的未收口后代时，节点不能设为已完成。" });
+      throw new HTTPException(409, { message: "存在 status <= 6 的未收口后代时，节点不能设为完成。" });
     }
     if (
       nextNode.status <= 6
