@@ -2,8 +2,9 @@
 
 `mcp-server` 把项目内 Hono/MCP 注册成品与来自 npm 的外部 MCP 统一交付到
 `/todo-mcp`；本地命名空间常驻，npm 命名空间由 AI 按需开启并在最后一次调用完成
-20 分钟后精确关闭。每个 VS Code MCP 连接拥有独立 session；在线 AI 编号、工作路径
-和项目关系只存在于当前 Node 进程内，不进入持久化仓库。
+20 分钟后精确关闭。每个 VS Code MCP 连接拥有独立 session；在线 AI 编号、真实窗口路径
+和项目关系只存在于当前 Node 进程内；`windowPath` 只由当前 MCP 客户端 Roots 交付，
+不使用 cwd 或项目参数冒充，也不进入持久化仓库。
 
 ```ts
 import { Hono } from "hono";
@@ -38,12 +39,13 @@ libs/mcpServer/
 │       └── readonly hono: HonoBase<BlankEnv, CurrentSchema, "/", "/">
 │                                                          // 交付全部 Hono 路由和唯一 MCP 入口
 ├── public.ts
-│   ├── type AiRuntime = {
+│   ├── type AgentRuntime = {
 │   │     id: number;
 │   │     projectIds: number[];
-│   │     workspacePath: string;
+│   │     windowPath: string;
 │   │   }                                                  // 交付一个在线 AI 会话的运行时数据
 │   ├── type McpServerBindings                             // [内] 向 MCP Hono action 交付 session 与运行时动作
+│   │   └── mcpServer.windowPathGet()                      // [内] 从当前 MCP 连接取得唯一真实 VS Code 窗口根路径
 │   ├── type RegistrationData<Namespace extends string, CurrentSchema extends Schema> = {
 │   │     namespace: Namespace;
 │   │     description: string;
@@ -62,7 +64,7 @@ libs/mcpServer/
 ├── mcp/
 │   ├── ai-runtime/
 │   │   └── store.ts
-│   │       └── default: StateCreator<Store, ..., AiRuntimeSlice>
+│   │       └── default: StateCreator<Store, ..., AgentRuntimeSlice>
 │   │                                                      // 生产在线 AI 会话切片；不持久化
 │   ├── overview.ts
 │   │   ├── type NamespaceSummary = {

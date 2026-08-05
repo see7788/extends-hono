@@ -15,15 +15,20 @@ import type {
 } from "hono/types";
 import { z } from "zod";
 import store from "./store";
-import type { AiRuntime, Store } from "./store/type";
+import type { AgentRuntime, Store } from "./store/type";
 
-export type { AiRuntime };
+export type { AgentRuntime };
 
 export type McpServerBindings = {
   mcpServer: {
-    aiRuntimeActions: Store["aiRuntimeActions"];
+    agentRuntimeActions: Store["agentRuntimeActions"];
     sessionId?: string;
+    windowPathGet?: () => Promise<string>;
   };
+};
+
+type ToolHandlerContext = {
+  windowPathGet(): Promise<string>;
 };
 
 export type ToolContractAnnotations = Omit<ToolAnnotations, "title"> & Required<Pick<
@@ -59,7 +64,11 @@ export type ToolRegistration = {
     icons?: Icon[];
     _meta?: Record<string, unknown>;
   };
-  handler: ToolCallback<z.ZodObject<z.ZodRawShape>>;
+  handler: (
+    arguments_: Record<string, unknown>,
+    extra: Parameters<ToolCallback<z.ZodObject<z.ZodRawShape>>>[1],
+    context?: ToolHandlerContext,
+  ) => ReturnType<ToolCallback<z.ZodObject<z.ZodRawShape>>>;
 };
 
 export type RegistrationData<
@@ -247,7 +256,7 @@ export default class Register<
           inputSchema,
           annotations,
         },
-        handler: async (arguments_: Record<string, unknown>, extra) => {
+        handler: async (arguments_: Record<string, unknown>, extra, toolContext) => {
           let requestPath = "/";
           if (method === "GET" || method === "HEAD") {
             const search = new URLSearchParams();
@@ -265,8 +274,9 @@ export default class Register<
           }
           const env: McpServerBindings = {
             mcpServer: {
-              aiRuntimeActions: store.getState().aiRuntimeActions,
+              agentRuntimeActions: store.getState().agentRuntimeActions,
               sessionId: extra.sessionId,
+              windowPathGet: toolContext?.windowPathGet,
             },
           };
           const response = method === "GET" || method === "HEAD"

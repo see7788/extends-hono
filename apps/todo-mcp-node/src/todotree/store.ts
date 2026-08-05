@@ -274,6 +274,7 @@ const descendantIds = database.prepare(`
   )
   SELECT id FROM descendants ORDER BY id
 `);
+// status <= 6 为未收口；status > 6 的 7/8/9 都是收口分支。
 const unfinishedDescendant = database.prepare(`
   WITH RECURSIVE descendants(id, status) AS (
     SELECT id, status FROM todotree_node WHERE id_parent = ?
@@ -282,9 +283,10 @@ const unfinishedDescendant = database.prepare(`
     FROM todotree_node AS child
     JOIN descendants AS parent ON child.id_parent = parent.id
   )
-  SELECT id FROM descendants WHERE status <> 7 LIMIT 1
+  SELECT id FROM descendants WHERE status <= 6 LIMIT 1
 `);
-const completedAncestor = database.prepare(`
+// 任何 status > 6 的祖先都已收口，后代只能继续保持收口。
+const closedAncestor = database.prepare(`
   WITH RECURSIVE ancestors(id, id_parent, status) AS (
     SELECT id, id_parent, status FROM todotree_node WHERE id = ?
     UNION ALL
@@ -292,9 +294,9 @@ const completedAncestor = database.prepare(`
     FROM todotree_node AS parent
     JOIN ancestors AS child ON child.id_parent = parent.id
   )
-  SELECT id FROM ancestors WHERE status = 7 LIMIT 1
+  SELECT id FROM ancestors WHERE status > 6 LIMIT 1
 `);
-const completedAncestorsRun = database.prepare(`
+const closedAncestorsRun = database.prepare(`
   WITH RECURSIVE ancestors(id, id_parent) AS (
     SELECT id, id_parent FROM todotree_node WHERE id = ?
     UNION ALL
@@ -304,7 +306,7 @@ const completedAncestorsRun = database.prepare(`
   )
   UPDATE todotree_node
   SET status = 4
-  WHERE status = 7 AND id IN (SELECT id FROM ancestors)
+  WHERE status > 6 AND id IN (SELECT id FROM ancestors)
 `);
 const childNodes = database.prepare(`
   SELECT id, id_parent, title, template, status, agent
@@ -576,8 +578,8 @@ const store = {
     const optionsValue = validator.add.parse(options);
     const parentNode = nodeRead(optionsValue.id_parent);
     nodePlacementValidate(parentNode, optionsValue);
-    if (optionsValue.status !== 7 && completedAncestor.get(parentNode.id)) {
-      throw new HTTPException(409, { message: "已完成节点的后代必须保持已完成状态。" });
+    if (optionsValue.status <= 6 && closedAncestor.get(parentNode.id)) {
+      throw new HTTPException(409, { message: "已收口节点的后代必须保持 status > 6 的收口状态。" });
     }
     const result = nodeInsert.run(
       optionsValue.id_parent,
@@ -634,8 +636,8 @@ const store = {
       throw new HTTPException(409, { message: "TodoTree node cannot be moved across projects." });
     }
     nodePlacementValidate(parentNode, { ...currentNode, id_parent: parentNode.id });
-    if (currentNode.status !== 7 && completedAncestor.get(parentNode.id)) {
-      throw new HTTPException(409, { message: "已完成节点的后代必须保持已完成状态。" });
+    if (currentNode.status <= 6 && closedAncestor.get(parentNode.id)) {
+      throw new HTTPException(409, { message: "已收口节点的后代必须保持 status > 6 的收口状态。" });
     }
     nodeMove.run(parentNode.id, currentNode.id);
     return nodeRead(currentNode.id);
@@ -657,14 +659,14 @@ const store = {
       decisionPlacementValidate(nodeRead(nextNode.id_parent));
     }
     if (nextNode.status === 7 && unfinishedDescendant.get(nextNode.id)) {
-      throw new HTTPException(409, { message: "存在未完成后代时，节点不能设为已完成。" });
+      throw new HTTPException(409, { message: "存在 status <= 6 的未收口后代时，节点不能设为已完成。" });
     }
     if (
-      nextNode.status !== 7
+      nextNode.status <= 6
       && currentNode.id_parent !== null
-      && completedAncestor.get(currentNode.id_parent)
+      && closedAncestor.get(currentNode.id_parent)
     ) {
-      throw new HTTPException(409, { message: "已完成节点的后代必须保持已完成状态。" });
+      throw new HTTPException(409, { message: "已收口节点的后代必须保持 status > 6 的收口状态。" });
     }
     nodeUpdate.run(
       nextNode.title,
@@ -781,7 +783,7 @@ const store = {
         throw new Error("conversation.init 的 memberId 必须指向 typescript 成员节点。");
       }
       idParent = memberNode.id;
-      completedAncestorsRun.run(memberNode.id);
+      closedAncestorsRun.run(memberNode.id);
     }
     const conversation = store.add({
       id_parent: idParent,

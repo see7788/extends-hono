@@ -9,10 +9,13 @@ import {
   Typography,
   type TreeDataNode,
 } from "antd";
-import type { AiRuntime } from "mcp-server/public.ts";
+import type { AgentRuntime } from "mcp-server/public.ts";
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
-import { statusOptions } from "todo-mcp-node/src/todotree/contract.ts";
+import {
+  statusOptions,
+  statusOptionsVisible,
+} from "todo-mcp-node/src/todotree/contract.ts";
 import type { TodoTreeNode, TodoTreeState } from "todo-mcp-node/src/todotree/store.ts";
 import store from "../store.ts";
 import Title from "./Title.tsx";
@@ -31,7 +34,7 @@ function TreeTitle({
   node,
   revealed,
 }: {
-  ai: AiRuntime[];
+  ai: AgentRuntime[];
   attention?: TodoTreeState["projectAttentionById"][number];
   drawerOpen(): void;
   node: TodoTreeNode;
@@ -82,7 +85,7 @@ function TreeTitle({
       )}
       <Title {...node} />
       {ai.map(runtime => (
-        <Tooltip key={runtime.id} title={runtime.workspacePath}>
+        <Tooltip key={runtime.id} title={runtime.windowPath}>
           <Typography.Text style={{ color: token.colorSuccess, whiteSpace: "nowrap" }}>
             #{String(runtime.id)}
           </Typography.Text>
@@ -164,7 +167,7 @@ export default function App() {
     return counts;
   }, [nodesById]);
   const aiByProjectId = useMemo(() => {
-    const result = new Map<number, AiRuntime[]>();
+    const result = new Map<number, AgentRuntime[]>();
     for (const runtime of todotreeAi) {
       for (const projectId of runtime.projectIds) {
         const projectAi = result.get(projectId) ?? [];
@@ -276,7 +279,8 @@ export default function App() {
         shape="square"
         trigger="click"
       >
-        {([{ label: "全部", value: "all" }, ...statusOptions] as const).map(({ label, value }) => {
+        {/* 页面入口使用同一验证映射的可见子集；3、5、6 仍由 statusOptions 正式识别。 */}
+        {([{ label: "全部", value: "all" }, ...statusOptionsVisible] as const).map(({ label, value }) => {
           const count = value === "all"
             ? Object.values(nodesById ?? {}).filter(node => node.id !== 1).length
             : statusCountByStatus.get(value) ?? 0;

@@ -2,30 +2,30 @@ import type {} from "zustand/middleware/immer";
 import type { StateCreator } from "zustand/vanilla";
 import type { Store } from "../../store/type";
 
-type AiRuntimeSlice = Pick<Store, "aiRuntime" | "aiRuntimeActions">;
+type AgentRuntimeSlice = Pick<Store, "agentRuntime" | "agentRuntimeActions">;
 
-const aiRuntimeSlice: StateCreator<
+const agentRuntimeSlice: StateCreator<
   Store,
   [["zustand/immer", never]],
   [],
-  AiRuntimeSlice
+  AgentRuntimeSlice
 > = (set, get) => ({
-  aiRuntime: {
+  agentRuntime: {
     idNext: 1,
     sessions: {},
   },
-  aiRuntimeActions: {
-    list: () => Object.values(get().aiRuntime.sessions).sort((left, right) => left.id - right.id),
+  agentRuntimeActions: {
+    list: () => Object.values(get().agentRuntime.sessions).sort((left, right) => left.id - right.id),
     sessionClose: sessionId => set(state => {
-      delete state.aiRuntime.sessions[sessionId];
+      delete state.agentRuntime.sessions[sessionId];
     }),
     sessionGet: sessionId => {
-      const runtime = get().aiRuntime.sessions[sessionId];
+      const runtime = get().agentRuntime.sessions[sessionId];
       if (!runtime) throw new Error("当前 MCP 会话尚未调用 conversation.init。");
       return runtime;
     },
-    workspaceSet: options => {
-      const current = get().aiRuntime.sessions[options.sessionId];
+    projectBind: options => {
+      const current = get().agentRuntime.sessions[options.sessionId];
       const runtime = current
         ? {
             ...current,
@@ -34,17 +34,17 @@ const aiRuntimeSlice: StateCreator<
               : [...current.projectIds, options.projectId],
           }
         : {
-            id: get().aiRuntime.idNext,
+            id: get().agentRuntime.idNext,
             projectIds: [options.projectId],
-            workspacePath: options.workspacePath,
+            windowPath: options.windowPath,
           };
       set(state => {
-        if (!current) state.aiRuntime.idNext += 1;
-        state.aiRuntime.sessions[options.sessionId] = runtime;
+        if (!current) state.agentRuntime.idNext += 1;
+        state.agentRuntime.sessions[options.sessionId] = runtime;
       });
       return runtime;
     },
   },
 });
 
-export default aiRuntimeSlice;
+export default agentRuntimeSlice;

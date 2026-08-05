@@ -4,7 +4,7 @@ import { hc } from "hono/client";
 import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { TodoMcpApi } from "todo-mcp-node/src/routers.ts";
-import { statusOptions } from "todo-mcp-node/src/todotree/contract.ts";
+import { statusOptionsVisible } from "todo-mcp-node/src/todotree/contract.ts";
 import {
   type TodoTreeNode,
 } from "todo-mcp-node/src/todotree/store.ts";
@@ -53,7 +53,7 @@ export default function NodeDrawer() {
                   });
                   if (!response.ok) throw new Error(await response.text());
                 }}
-                options={[...statusOptions]}
+                options={[...statusOptionsVisible]}
                 size="small"
                 value={node.status}
               />

@@ -14,7 +14,8 @@ todo-mcp-node/
 │   │   └── default: Hono                           // 注册 create-todo-cli、honoapp、todotree 与页面
 │   └── todotree/
 │       ├── contract.ts
-│       │   ├── statusOptions                       // 交付页面与 MCP 共用的状态数字、待决策/工作中等名称
+│       │   ├── statusOptions                       // 交付页面与 MCP 共用的完整 1-9 状态；status > 6 是收口
+│       │   ├── statusOptionsVisible                // 页面暂不展示工作队未启用的 3、5、6
 │       │   ├── templateOptions                     // 交付页面与 MCP 共用的节点模板数字和名称
 │       │   └── contractValidator                   // 交付 agent、status 与 template 的唯一验证器
 │       ├── index.ts

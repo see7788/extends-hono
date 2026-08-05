@@ -1,23 +1,23 @@
-export type AiRuntime = {
+export type AgentRuntime = {
   id: number;
   projectIds: number[];
-  workspacePath: string;
+  windowPath: string;
 };
 
 export type Store = {
-  aiRuntime: {
+  agentRuntime: {
     idNext: number;
-    sessions: Record<string, AiRuntime>;
+    sessions: Record<string, AgentRuntime>;
   };
-  aiRuntimeActions: {
-    list(): AiRuntime[];
+  agentRuntimeActions: {
+    list(): AgentRuntime[];
     sessionClose(sessionId: string): void;
-    sessionGet(sessionId: string): AiRuntime;
-    workspaceSet(options: {
+    sessionGet(sessionId: string): AgentRuntime;
+    projectBind(options: {
       projectId: number;
       sessionId: string;
-      workspacePath: string;
-    }): AiRuntime;
+      windowPath: string;
+    }): AgentRuntime;
   };
   mcpError: {
     entries: Array<{

@@ -2,7 +2,6 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { streamSSE, type SSEStreamingApi } from "hono/streaming";
-import { resolve } from "node:path";
 import { z } from "zod";
 import Register, { type McpServerBindings } from "mcp-server/public.ts";
 import mcpStore from "mcp-server/store/index.ts";
@@ -26,15 +25,15 @@ const eventSend = async ({
     }
   }
 };
-const aiRuntimeUnsubscribe = mcpStore.subscribe((state, previousState) => {
-  if (state.aiRuntime === previousState.aiRuntime) return;
-  void eventSend({ event: "ai", data: state.aiRuntimeActions.list() });
+const agentRuntimeUnsubscribe = mcpStore.subscribe((state, previousState) => {
+  if (state.agentRuntime === previousState.agentRuntime) return;
+  void eventSend({ event: "ai", data: state.agentRuntimeActions.list() });
 });
 const hot = (import.meta as ImportMeta & {
   hot?: { dispose(callback: () => void): void };
 }).hot;
-if (hot) hot.dispose(aiRuntimeUnsubscribe);
-const projectTreeContract = `初始化项目交流并读取当前完整项目书。AI 只提交自己当前的绝对工作路径；服务端只把它解析到最近的已登记祖先项目，不依据 package.json、pnpm workspace 或其他语言文件猜测项目，也不公开内部允许根与其他项目。项目登记路径只生产一个 template=${templateOptions[0].value} 节点，严禁把路径中的盘符或目录分别建成节点。任务、问题、决策、数据、切片、生产者、消费者、蓝图、源码、验证与结果，全部是同一棵项目 tree 的节点。AI 进入已有或空项目后的第一项工作必须调用 conversation.init；未登记路径必须停止，不能自行登记或改认其他目录。
+if (hot) hot.dispose(agentRuntimeUnsubscribe);
+const projectTreeContract = `初始化项目交流并读取当前完整项目书。AI 提交当前项目的绝对路径用于项目解析；在线 AI 的真实 VS Code 窗口根路径只由 MCP Roots 交付，不依据 cwd、package.json、pnpm workspace 或进程标题猜测，也不公开内部允许根或其他项目。项目登记路径只生产一个 template=${templateOptions[0].value} 节点，严禁把路径中的盘符或目录分别建成节点。任务、问题、决策、数据、切片、生产者、消费者、蓝图、源码、验证与结果，全部是同一棵项目 tree 的节点。AI 进入已有或空项目后的第一项工作必须调用 conversation.init；未登记路径必须停止，不能自行登记或改认其他目录。
 
 源码蓝图初始刚好三层：第一层 template=${templateOptions[0].value}，是完整项目路径；第二层 template=${templateOptions[1].value}，是从项目根开始的完整相对文件路径，文件即使经过多层目录也只生产这一行，严禁把中间目录建成节点；第三层 template=${templateOptions[2].value}，只列该文件真实公开成员，使用可成立的标准 TypeScript 类型或签名美化表达。成员下一行用 // 先写具体用途；该成员实际消费其他生产者时，继续写“调用 相对文件路径.成员()”，只记录直接调用，不越级展开。实现库时，非成品消费者入口但因库内实现必须导出的成员统一在签名前标记 [内]；私有成员、占位成员和无真实用途的导出不得进入项目书。
 
@@ -53,7 +52,7 @@ project/
 
 错误：把 project、public、feature 等路径片段逐层建立为目录节点，再把 index.ts 或 web.ts 放到目录节点下面；只写签名却省略用途与直接消费链；把私有成员或无消费者的导出写进项目书。
 
-交流规则：status: 1 只表示需要人类回答的决策，必须处于受影响的 typescript 公开成员后代；AI 应一次性列出当前已知的全部决策。status: 2 只表示 AI 自己的实现待办，不要求人类回复。人类回答后，AI 立即把对应决策改为已完成或已取消。每次回复前调用 project.attention；第一行只写全部待决策 ID，例如“待你决策：#12、#15”，没有待决策时只写“无”。项目根 status 只表达项目生命周期，严禁因存在决策而修改项目根。`;
+交流规则：status: 1 只表示需要人类回答的决策，必须处于受影响的 typescript 公开成员后代；AI 应一次性列出当前已知的全部决策。status: 2 只表示 AI 自己的实现待办，不要求人类回复。status <= 6 表示未收口，status > 6 统一表示收口；7 是正常完成，8 是阻塞收口，9 是取消收口。人类回答后，AI 立即把对应决策改为已完成或已取消。每次回复前调用 project.attention；第一行只写全部待决策 ID，例如“待你决策：#12、#15”，没有待决策时只写“无”。项目根 status 只表达项目生命周期，严禁因存在决策而修改项目根。`;
 
 export default new Register({
   namespace: "todo-mcp-node",
@@ -159,7 +158,7 @@ export default new Register({
       },
     ),
     validator.set,
-    "人类与 AI 共用：修改指定节点并返回修改后的正式节点数据。AI 只能修改当前已解析项目内部节点。",
+    "人类与 AI 共用：修改指定节点并返回修改后的正式节点数据。status <= 6 表示未收口，status > 6 表示收口；AI 只能修改当前已解析项目内部节点。",
     {
       readOnlyHint: false,
       destructiveHint: false,
@@ -180,11 +179,25 @@ export default new Register({
             message: "当前 MCP transport 未提供 sessionId，不能登记在线 AI。",
           });
         }
+        let windowPath: string | undefined;
+        try {
+          windowPath = await context.env.mcpServer.windowPathGet?.();
+        } catch (error) {
+          throw new HTTPException(409, {
+            message: error instanceof Error ? error.message : String(error),
+            cause: error,
+          });
+        }
+        if (!windowPath) {
+          throw new HTTPException(409, {
+            message: "当前 MCP 客户端未提供真实 VS Code 窗口路径，不能登记在线 AI。",
+          });
+        }
         const result = store.conversationInit(options);
-        const ai = context.env.mcpServer.aiRuntimeActions.workspaceSet({
+        const agent = context.env.mcpServer.agentRuntimeActions.projectBind({
           projectId: result.projectId,
           sessionId,
-          workspacePath: resolve(options.workspacePath),
+          windowPath,
         });
         await eventSend({ event: "tree", data: store.tree() });
         await eventSend({
@@ -194,7 +207,7 @@ export default new Register({
             workspacePath: options.workspacePath,
           }),
         });
-        return context.json({ ...result, ai }, 200);
+        return context.json({ ...result, agent }, 200);
       },
     ),
     validator.conversationInit,
@@ -218,11 +231,11 @@ export default new Register({
             message: "当前 MCP transport 未提供 sessionId。",
           });
         }
-        return context.json(context.env.mcpServer.aiRuntimeActions.sessionGet(sessionId), 200);
+        return context.json(context.env.mcpServer.agentRuntimeActions.sessionGet(sessionId), 200);
       },
     ),
     agentMeInput,
-    "读取当前 VS Code MCP 会话的在线 AI 编号、完整工作路径和已绑定项目；必须先调用 conversation.init。",
+    "读取当前 VS Code MCP 会话的在线 AI 编号、Roots 取得的真实窗口路径和已绑定项目；必须先调用 conversation.init。",
     {
       readOnlyHint: true,
       destructiveHint: false,
@@ -447,7 +460,7 @@ export default new Register({
         });
         await stream.writeSSE({
           event: "ai",
-          data: JSON.stringify(mcpStore.getState().aiRuntimeActions.list()),
+          data: JSON.stringify(mcpStore.getState().agentRuntimeActions.list()),
         });
         await closed;
       } finally {

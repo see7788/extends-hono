@@ -1,7 +1,7 @@
 import type { ImmerStateCreator } from "extends-zustand/immerStateCreator";
 import { hc } from "hono/client";
 import type { TodoMcpApi } from "todo-mcp-node/src/routers.ts";
-import type { AiRuntime } from "mcp-server/public.ts";
+import type { AgentRuntime } from "mcp-server/public.ts";
 import type {
   TodoTreeNode,
   TodoTreeState,
@@ -9,10 +9,10 @@ import type {
 
 export type TodoTreeStore = {
   todotree: TodoTreeState | undefined;
-  todotreeAi: AiRuntime[];
+  todotreeAi: AgentRuntime[];
   todotreeRecent: { id: number; unread: boolean }[];
   todotreeActions: {
-    aiSet(ai: AiRuntime[]): void;
+    aiSet(ai: AgentRuntime[]): void;
     connect(): () => void;
     nodeAdd(node: TodoTreeNode): void;
     nodeDel(ids: number[]): void;
@@ -42,7 +42,7 @@ const store: ImmerStateCreator<TodoTreeStore> = (set, get) => ({
         get().todotreeActions.nodeAdd(JSON.parse(event.data) as TodoTreeNode);
       });
       eventSource.addEventListener("ai", event => {
-        get().todotreeActions.aiSet(JSON.parse(event.data) as AiRuntime[]);
+        get().todotreeActions.aiSet(JSON.parse(event.data) as AgentRuntime[]);
       });
       eventSource.addEventListener("attention", event => {
         get().todotreeActions.projectAttentionSet(
