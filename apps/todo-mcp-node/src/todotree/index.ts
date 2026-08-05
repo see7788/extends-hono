@@ -3,8 +3,8 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { streamSSE, type SSEStreamingApi } from "hono/streaming";
 import { z } from "zod";
-import Register, { type McpServerBindings } from "mcp-server/public.ts";
-import mcpStore from "mcp-server/store/index.ts";
+import Register, { type McpServerBindings } from "mcp-server-lib/public.ts";
+import mcpStore from "mcp-server-lib/store/index.ts";
 import { templateOptions } from "./contract.ts";
 import store, { validator } from "./store.ts";
 

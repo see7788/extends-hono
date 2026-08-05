@@ -4,9 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./src/routers.ts": "./src/routers.ts",
-    "./src/todotree/contract.ts": "./src/todotree/contract.ts",
-    "./src/todotree/store.ts": "./src/todotree/store.ts"
+     "./*.ts": "./*.ts"
   },
   "scripts": {
     "build": "vite build --config vite.config.ts --configLoader runner",
@@ -20,7 +18,7 @@
     "better-sqlite3": "^13.0.2",
     "esbuild": "^0.28.1",
     "hono": "4.12.30",
-    "mcp-server": "workspace:*",
+    "mcp-server-lib": "workspace:*",
     "mcpcreate-lib": "workspace:*",
     "mustache": "^4.2.0",
     "prompts": "^2.4.2",

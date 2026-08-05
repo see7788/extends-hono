@@ -1,6 +1,6 @@
-# mcp-server
+# mcp-server-lib
 
-`mcp-server` 把项目内 Hono/MCP 注册成品与来自 npm 的外部 MCP 统一交付到
+`mcp-server-lib` 把项目内 Hono/MCP 注册成品与来自 npm 的外部 MCP 统一交付到
 `/todo-mcp`；本地命名空间常驻，npm 命名空间由 AI 按需开启并在最后一次调用完成
 20 分钟后精确关闭。每个 VS Code MCP 连接拥有独立 session；在线 AI 编号、真实窗口路径
 和项目关系只存在于当前 Node 进程内；AI 在 `conversation.init` 中直接交付本次会话环境
@@ -8,7 +8,7 @@
 
 ```ts
 import { Hono } from "hono";
-import Mcp from "mcp-server/index.ts";
+import Mcp from "mcp-server-lib/index.ts";
 import tpl from "honoapp/src/tpl/index";
 import todocli from "mcpcreate-lib/index";
 import todotree from "./todotree/index.ts";
@@ -24,7 +24,7 @@ export default new Hono().route("/", mcp.hono);
 ## 源码结构
 
 ```text
-libs/mcpServer/
+libs/mcp-server-lib/
 ├── index.ts
 │   └── default class Mcp<CurrentSchema extends Schema = {}>
 │       ├── constructor()                                  // 装配注册成品及兼容新旧协议的 /todo-mcp

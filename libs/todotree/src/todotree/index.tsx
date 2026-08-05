@@ -9,7 +9,7 @@ import {
   Typography,
   type TreeDataNode,
 } from "antd";
-import type { AgentRuntime } from "mcp-server/public.ts";
+import type { AgentRuntime } from "mcp-server-lib/public.ts";
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import {

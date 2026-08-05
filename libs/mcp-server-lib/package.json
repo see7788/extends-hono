@@ -1,5 +1,5 @@
 {
-  "name": "mcp-server",
+  "name": "mcp-server-lib",
   "version": "0.1.0",
   "type": "module",
   "exports": {

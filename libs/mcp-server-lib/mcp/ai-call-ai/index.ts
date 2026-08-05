@@ -4,8 +4,8 @@ import { HTTPException } from "hono/http-exception";
 import workspaceAiContact, {
   cardSchema,
   inputSchema,
-} from "mcp-server/mcp/ai-call-ai/WORKSPACE_AI_CONTACT.ts";
-import Register from "mcp-server/public.ts";
+} from "mcp-server-lib/mcp/ai-call-ai/WORKSPACE_AI_CONTACT.ts";
+import Register from "mcp-server-lib/public.ts";
 
 export default new Register({
   namespace: "ai-call-ai",
