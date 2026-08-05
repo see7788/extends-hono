@@ -96,12 +96,19 @@ const projectAttention = z.object({
 const treeState = z.object({
   treeData: tree,
   treeDataMaxId: z.number().int().positive(),
+  projectPathExistsById: z.record(z.string(), z.boolean()),
   projectAttentionById: z.record(z.string(), projectAttention),
 });
 const projectTree = z.object({
   projectId: z.number().int().positive(),
+  projectPathExists: z.boolean(),
   nodesById: z.record(z.string(), node),
   attention: projectAttention,
+});
+const projectMaintenance = z.object({
+  projectId: z.number().int().positive(),
+  projectPath: absolutePath,
+  reason: z.literal("path_missing"),
 });
 const projectRelation = z.object({
   sourceProjectId: z.number().int().positive(),
@@ -125,6 +132,7 @@ const projectMigrate = z.object({
   sourceProjectPath: absolutePath.describe("当前已经登记的项目绝对路径；源目录允许已经迁走。"),
   targetProjectPath: currentWorkspacePath.describe("迁移后的真实项目绝对路径。"),
 });
+const projectMaintenanceInput = z.object({});
 const conversationInit = projectResolve.extend({
   title: node.shape.title,
   agent,
@@ -150,6 +158,7 @@ export const validator = {
   nodeSearch,
   projectRegister: z.object({ projectPath: currentWorkspacePath }),
   projectMigrate,
+  projectMaintenance: projectMaintenanceInput,
   projectRelation: projectRelationInput,
   projectResolve,
   projectNodeRead: del.extend({ workspacePath: currentWorkspacePath }),
@@ -161,6 +170,7 @@ export type TodoTreeNode = z.infer<typeof node>;
 export type TodoTreeState = z.infer<typeof treeState>;
 export type TodoTreeProject = z.infer<typeof projectTree>;
 export type ProjectAttention = z.infer<typeof projectAttention>;
+export type ProjectMaintenance = z.infer<typeof projectMaintenance>;
 
 const projectPath = fileURLToPath(new URL("../../", import.meta.url));
 const projectPathValue = process.platform === "win32"
@@ -521,14 +531,24 @@ const projectAttentionByIdRead = (nodes: TodoTreeNode[]) => {
   }
   return z.record(z.string(), projectAttention).parse(attentionByProjectId);
 };
+const projectPathExistsRead = (nodeValue: TodoTreeNode) => {
+  if (nodeValue.template !== "project") return false;
+  try {
+    return lstatSync(nodeValue.title).isDirectory();
+  } catch {
+    return false;
+  }
+};
 const projectTreeRead = (projectId: number, rows = subtreeNodes.all(projectId)): TodoTreeProject => {
   const nodes = rows.map(databaseNodeRead);
+  const projectNode = nodes.find(nodeValue => nodeValue.id === projectId) ?? nodeRead(projectId);
   const attention = projectAttentionByIdRead(
     subtreeNodes.all(projectId).map(databaseNodeRead),
   )[projectId];
   if (!attention) throw new Error(`TodoTree project does not exist: ${String(projectId)}`);
   return projectTree.parse({
     projectId,
+    projectPathExists: projectPathExistsRead(projectNode),
     nodesById: Object.fromEntries(nodes.map(nodeValue => [nodeValue.id, nodeValue])),
     attention,
   });
@@ -768,6 +788,16 @@ const store = {
   },
   projectAttentionList: () => projectAttentionByIdRead(nodesAll.all().map(databaseNodeRead)),
   projectList: () => projectsAll.all().map(databaseNodeRead),
+  projectMaintenance: () => projectMaintenance.array().parse(
+    projectsAll.all()
+      .map(databaseNodeRead)
+      .filter(project => !projectPathExistsRead(project))
+      .map(project => ({
+        projectId: project.id,
+        projectPath: project.title,
+        reason: "path_missing" as const,
+      })),
+  ),
   projectResolve: (value: string) => {
     const projectNode = projectRead(value);
     return projectTreeRead(projectNode.id);
@@ -855,6 +885,11 @@ const store = {
         nodesById: Object.fromEntries(nodes.map(nodeValue => [nodeValue.id, nodeValue])),
       },
       treeDataMaxId,
+      projectPathExistsById: Object.fromEntries(
+        nodes
+          .filter(nodeValue => nodeValue.id_parent === 1 && nodeValue.template === "project")
+          .map(nodeValue => [nodeValue.id, projectPathExistsRead(nodeValue)]),
+      ),
       projectAttentionById: projectAttentionByIdRead(nodes),
     });
   },

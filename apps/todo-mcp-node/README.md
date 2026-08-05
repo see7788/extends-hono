@@ -31,6 +31,7 @@ todo-mcp-node/
 │       │       ├── workspace.relation.add.POST      // 新增跨项目关系
 │       │       ├── workspace.relation.del.POST      // 删除跨项目关系
 │       │       ├── project.attention.POST           // 读取项目后代节点派生的关注数量
+│       │       ├── project.maintenance.POST         // 读取路径失效项目并交付迁移维护清单
 │       │       ├── project.resolve.POST             // 把任意项目内路径解析到唯一项目
 │       │       ├── project.tree.POST                // 读取一个项目的完整树与关注数据
 │       │       ├── project.migrate.POST             // 迁移项目地址并保留 ID、子树与跨项目关系
@@ -45,7 +46,9 @@ todo-mcp-node/
 │       └── store.ts
 │           ├── validator                           // 生产接口与 SQLite 共同使用的验证器
 │           ├── TodoTreeNode: type                  // 交付正式节点类型
-│           ├── TodoTreeState: type                 // 交付正式任务树类型
+│           ├── TodoTreeState: type                 // 交付正式任务树与 projectPathExistsById
+│           ├── TodoTreeProject: type               // 交付项目书与 projectPathExists
+│           ├── ProjectMaintenance: type             // 交付失效项目的迁移维护数据
 │           └── default
 │               ├── add(options): TodoTreeNode       // 在事务中新增节点
 │               ├── batch(options): TodoTreeNode[]   // 在同一事务中新增完整节点树
@@ -53,6 +56,7 @@ todo-mcp-node/
 │               ├── move(options): TodoTreeNode      // 在事务中移动节点树
 │               ├── set(options): TodoTreeNode       // 在事务中修改并读取正式节点
 │               ├── projectMigrate(options)          // 迁移项目路径并保留原项目数据关系
+│               ├── projectMaintenance()             // 生产登记但已失效项目的迁移维护清单
 │               └── tree(): TodoTreeState            // 从 SQLite 生产完整任务树
 ├── vite.config.ts                                  // 固定 3005 并构建 todotree
 └── package.json

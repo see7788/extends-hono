@@ -33,7 +33,7 @@ const hot = (import.meta as ImportMeta & {
   hot?: { dispose(callback: () => void): void };
 }).hot;
 if (hot) hot.dispose(agentRuntimeUnsubscribe);
-const projectTreeContract = `初始化项目交流并读取当前完整项目书。AI 提交当前项目的绝对路径用于项目解析，并把本次会话 environment_context 中的 cwd 原样作为 windowPath；服务端分别验证项目和真实 VS Code 窗口目录，不从任务项目路径、package.json、pnpm workspace 或进程标题推导窗口路径，也不公开内部允许根或其他项目。项目登记路径只生产一个 template=${templateOptions[0].value} 节点，严禁把路径中的盘符或目录分别建成节点。任务、问题、决策、数据、切片、生产者、消费者、蓝图、源码、验证与结果，全部是同一棵项目 tree 的节点。AI 进入已有或空项目后的第一项工作必须调用 conversation.init；未登记路径必须停止，不能自行登记或改认其他目录。
+const projectTreeContract = `初始化项目交流并读取当前完整项目书。AI 提交当前项目的绝对路径用于项目解析，并把本次会话 environment_context 中的 cwd 原样作为 windowPath；服务端分别验证项目和真实 VS Code 窗口目录，不从任务项目路径、package.json、pnpm workspace 或进程标题推导窗口路径，也不公开内部允许根或其他项目。projectPathExists 为 false 表示登记的历史项目路径已经不存在或不再是目录，必须使用 project.migrate 修正，不能把失效路径当作当前项目根。项目登记路径只生产一个 template=${templateOptions[0].value} 节点，严禁把路径中的盘符或目录分别建成节点。任务、问题、决策、数据、切片、生产者、消费者、蓝图、源码、验证与结果，全部是同一棵项目 tree 的节点。AI 进入已有或空项目后的第一项工作必须调用 conversation.init；未登记路径必须停止，不能自行登记或改认其他目录。
 
 源码蓝图初始刚好三层：第一层 template=${templateOptions[0].value}，是完整项目路径；第二层 template=${templateOptions[1].value}，是从项目根开始的完整相对文件路径，文件即使经过多层目录也只生产这一行，严禁把中间目录建成节点；第三层 template=${templateOptions[2].value}，只列该文件真实公开成员，使用可成立的标准 TypeScript 类型或签名美化表达。成员下一行用 // 先写具体用途；该成员实际消费其他生产者时，继续写“调用 相对文件路径.成员()”，只记录直接调用，不越级展开。实现库时，非成品消费者入口但因库内实现必须导出的成员统一在签名前标记 [内]；私有成员、占位成员和无真实用途的导出不得进入项目书。
 
@@ -237,7 +237,7 @@ export default new Register({
       context => context.json(store.workspaceTree(context.req.valid("json").workspacePath), 200),
     ),
     validator.workspaceTree,
-    "读取当前 Workspace 下全部已登记具体项目的完整项目书，以及与这些项目相连的跨库有向关系。",
+    "读取当前 Workspace 下全部已登记具体项目的完整项目书，以及与这些项目相连的跨库有向关系；projectPathExists 为 false 的历史项目路径必须迁移后再作为当前根使用。",
     {
       readOnlyHint: true,
       destructiveHint: false,
@@ -294,6 +294,22 @@ export default new Register({
     },
   )
   .mcpAdd(
+    "/project/maintenance",
+    new Hono().post(
+      "/",
+      zValidator("json", validator.projectMaintenance),
+      context => context.json(store.projectMaintenance(), 200),
+    ),
+    validator.projectMaintenance,
+    "读取所有登记但路径已失效的具体项目；返回 projectId、projectPath 和 reason，AI 必须使用 project.migrate 修复后再维护项目。没有失效项目时返回空数组。",
+    {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  )
+  .mcpAdd(
     "/project/resolve",
     new Hono().post(
       "/",
@@ -301,7 +317,7 @@ export default new Register({
       context => context.json(store.projectResolve(context.req.valid("json").workspacePath), 200),
     ),
     validator.projectResolve,
-    "把当前绝对工作路径解析到最近的已登记祖先项目并返回完整项目书；不创建项目，也不返回其他项目。",
+    "把当前绝对工作路径解析到最近的已登记祖先项目并返回完整项目书；projectPathExists 为 false 时说明历史路径已失效，应迁移后再使用；不创建项目，也不返回其他项目。",
     {
       readOnlyHint: true,
       destructiveHint: false,
@@ -317,7 +333,7 @@ export default new Register({
       context => context.json(store.projectTree(context.req.valid("json").workspacePath), 200),
     ),
     validator.projectResolve,
-    "读取当前项目完整项目书，不创建交流节点，也不返回其他项目。",
+    "读取当前项目完整项目书；projectPathExists 为 false 时说明登记路径已失效，应使用 project.migrate；不创建交流节点，也不返回其他项目。",
     {
       readOnlyHint: true,
       destructiveHint: false,

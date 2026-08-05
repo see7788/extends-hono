@@ -32,12 +32,14 @@ function TreeTitle({
   attention,
   drawerOpen,
   node,
+  pathExists,
   revealed,
 }: {
   ai: AgentRuntime[];
   attention?: TodoTreeState["projectAttentionById"][number];
   drawerOpen(): void;
   node: TodoTreeNode;
+  pathExists?: boolean;
   revealed: boolean;
 }) {
   const { token } = theme.useToken();
@@ -83,7 +85,7 @@ function TreeTitle({
           />
         </Flex>
       )}
-      <Title {...node} />
+      <Title {...node} pathExists={pathExists} />
       {ai.map(runtime => (
         <Tooltip key={runtime.id} title={runtime.windowPath}>
           <Typography.Text style={{ color: token.colorSuccess, whiteSpace: "nowrap" }}>
@@ -190,6 +192,9 @@ export default function App() {
     const attention = node.template === "project"
       ? todotree?.projectAttentionById[node.id]
       : undefined;
+    const pathExists = node.template === "project"
+      ? todotree?.projectPathExistsById[node.id]
+      : undefined;
     return {
       key: node.id,
       isLeaf: children.length === 0,
@@ -199,6 +204,7 @@ export default function App() {
           attention={attention}
           drawerOpen={drawerOpen}
           node={node}
+          pathExists={pathExists}
           revealed={revealedNodeId === node.id}
         />
       ),

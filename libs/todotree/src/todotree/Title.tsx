@@ -5,11 +5,12 @@ import type { TodoTreeNode } from "todo-mcp-node/src/todotree/store.ts";
 
 export default function Title({
   compact = true,
+  pathExists,
   title,
   template,
-}: TodoTreeNode & { compact?: boolean }) {
+}: TodoTreeNode & { compact?: boolean; pathExists?: boolean }) {
   if (template === "project") {
-    return <Typography.Text strong>{title}</Typography.Text>;
+    return <Typography.Text delete={pathExists === false} strong>{title}</Typography.Text>;
   }
   if (template === "file") {
     return <Typography.Text style={{ fontFamily: "monospace" }}>{title}</Typography.Text>;
