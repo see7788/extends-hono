@@ -16,6 +16,9 @@ const absolutePath = z.string().trim().min(1).refine(
 const currentWorkspacePath = absolutePath.describe(
   "当前 AI 已知的绝对工作路径；服务端只解析到最近的已登记祖先项目，不依据语言文件或 workspace 容器猜测项目。",
 );
+const windowPath = absolutePath.describe(
+  "当前 VS Code 窗口的真实根路径；必须直接使用本次会话 environment_context 中的 cwd，不得填写任务项目路径。",
+);
 const node = z.object({
   id: z.number().int().positive().describe("TodoTree 节点 ID。"),
   id_parent: z.number().int().positive().nullable().describe("父节点 ID。"),
@@ -125,6 +128,7 @@ const projectMigrate = z.object({
 const conversationInit = projectResolve.extend({
   title: node.shape.title,
   agent,
+  windowPath,
   memberId: z.number().int().positive().optional().describe(
     "本次交流对应的 typescript 成员节点 ID；空项目首次建立蓝图时省略，已有成员后必须提供。",
   ),
@@ -770,6 +774,7 @@ const store = {
   },
   conversationInit: database.transaction((options: z.input<typeof validator.conversationInit>) => {
     const optionsValue = validator.conversationInit.parse(options);
+    const windowPath = workspacePathRead(optionsValue.windowPath);
     const project = store.projectResolve(optionsValue.workspacePath);
     let idParent = project.projectId;
     if (optionsValue.memberId === undefined) {
@@ -795,6 +800,7 @@ const store = {
     return {
       projectId: project.projectId,
       conversationId: conversation.id,
+      windowPath,
       nodesById: {
         ...project.nodesById,
         [conversation.id]: conversation,

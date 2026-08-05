@@ -10,7 +10,6 @@ import { Hono } from "hono";
 import type { HonoBase } from "hono/hono-base";
 import type { BlankEnv, MergePath, MergeSchemaPath, Schema } from "hono/types";
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
 import { z } from "zod";
 import aiCallAi from "./mcp/ai-call-ai";
@@ -393,12 +392,9 @@ export default class Mcp<CurrentSchema extends Schema = {}> {
     arguments_: Record<string, unknown>,
     extra: Parameters<ToolRegistration["handler"]>[1],
   ) {
-    const toolContext = {
-      windowPathGet: () => this.windowPathGet(activeServer),
-    };
     const namespace = tool.name.split(".", 1)[0]!;
     const runtime = this.namespaceRuntime.get(namespace);
-    if (!runtime || runtime.kind === "local") return tool.handler(arguments_, extra, toolContext);
+    if (!runtime || runtime.kind === "local") return tool.handler(arguments_, extra);
     if (runtime.register.status === "closing") {
       throw new Error(`External MCP "${runtime.register.namespace}" is closing; open it before use.`);
     }
@@ -408,7 +404,7 @@ export default class Mcp<CurrentSchema extends Schema = {}> {
     this.packageIdleCancel(runtime);
     runtime.inFlight += 1;
     try {
-      return await tool.handler(arguments_, extra, toolContext);
+      return await tool.handler(arguments_, extra);
     } finally {
       runtime.inFlight -= 1;
       if (runtime.inFlight === 0) this.packageIdleSchedule(runtime);
@@ -417,26 +413,6 @@ export default class Mcp<CurrentSchema extends Schema = {}> {
 
   private serversToolsSync() {
     for (const server of this.activeServers) this.serverToolsSync(server);
-  }
-
-  private async windowPathGet(activeServer: ActiveServer) {
-    const capabilities = activeServer.mcp.server.getClientCapabilities();
-    if (!capabilities?.roots) {
-      throw new Error(
-        "当前 MCP 客户端未提供 Roots 能力，无法取得真实 VS Code 窗口路径；禁止使用 cwd 或项目参数冒充窗口路径。",
-      );
-    }
-    const result = await activeServer.mcp.server.listRoots();
-    if (result.roots.length !== 1) {
-      throw new Error(
-        `当前 MCP 会话必须提供唯一 VS Code 窗口根路径，实际收到 ${result.roots.length} 个 Roots。`,
-      );
-    }
-    const [root] = result.roots;
-    if (!root?.uri.startsWith("file:")) {
-      throw new Error(`VS Code Root 必须是 file URI，实际收到：${root?.uri ?? "空值"}。`);
-    }
-    return fileURLToPath(root.uri);
   }
 
   private async packagesHealthAudit() {

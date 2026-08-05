@@ -33,7 +33,7 @@ const hot = (import.meta as ImportMeta & {
   hot?: { dispose(callback: () => void): void };
 }).hot;
 if (hot) hot.dispose(agentRuntimeUnsubscribe);
-const projectTreeContract = `初始化项目交流并读取当前完整项目书。AI 提交当前项目的绝对路径用于项目解析；在线 AI 的真实 VS Code 窗口根路径只由 MCP Roots 交付，不依据 cwd、package.json、pnpm workspace 或进程标题猜测，也不公开内部允许根或其他项目。项目登记路径只生产一个 template=${templateOptions[0].value} 节点，严禁把路径中的盘符或目录分别建成节点。任务、问题、决策、数据、切片、生产者、消费者、蓝图、源码、验证与结果，全部是同一棵项目 tree 的节点。AI 进入已有或空项目后的第一项工作必须调用 conversation.init；未登记路径必须停止，不能自行登记或改认其他目录。
+const projectTreeContract = `初始化项目交流并读取当前完整项目书。AI 提交当前项目的绝对路径用于项目解析，并把本次会话 environment_context 中的 cwd 原样作为 windowPath；服务端分别验证项目和真实 VS Code 窗口目录，不从任务项目路径、package.json、pnpm workspace 或进程标题推导窗口路径，也不公开内部允许根或其他项目。项目登记路径只生产一个 template=${templateOptions[0].value} 节点，严禁把路径中的盘符或目录分别建成节点。任务、问题、决策、数据、切片、生产者、消费者、蓝图、源码、验证与结果，全部是同一棵项目 tree 的节点。AI 进入已有或空项目后的第一项工作必须调用 conversation.init；未登记路径必须停止，不能自行登记或改认其他目录。
 
 源码蓝图初始刚好三层：第一层 template=${templateOptions[0].value}，是完整项目路径；第二层 template=${templateOptions[1].value}，是从项目根开始的完整相对文件路径，文件即使经过多层目录也只生产这一行，严禁把中间目录建成节点；第三层 template=${templateOptions[2].value}，只列该文件真实公开成员，使用可成立的标准 TypeScript 类型或签名美化表达。成员下一行用 // 先写具体用途；该成员实际消费其他生产者时，继续写“调用 相对文件路径.成员()”，只记录直接调用，不越级展开。实现库时，非成品消费者入口但因库内实现必须导出的成员统一在签名前标记 [内]；私有成员、占位成员和无真实用途的导出不得进入项目书。
 
@@ -179,25 +179,11 @@ export default new Register({
             message: "当前 MCP transport 未提供 sessionId，不能登记在线 AI。",
           });
         }
-        let windowPath: string | undefined;
-        try {
-          windowPath = await context.env.mcpServer.windowPathGet?.();
-        } catch (error) {
-          throw new HTTPException(409, {
-            message: error instanceof Error ? error.message : String(error),
-            cause: error,
-          });
-        }
-        if (!windowPath) {
-          throw new HTTPException(409, {
-            message: "当前 MCP 客户端未提供真实 VS Code 窗口路径，不能登记在线 AI。",
-          });
-        }
         const result = store.conversationInit(options);
         const agent = context.env.mcpServer.agentRuntimeActions.projectBind({
           projectId: result.projectId,
           sessionId,
-          windowPath,
+          windowPath: result.windowPath,
         });
         await eventSend({ event: "tree", data: store.tree() });
         await eventSend({
@@ -235,7 +221,7 @@ export default new Register({
       },
     ),
     agentMeInput,
-    "读取当前 VS Code MCP 会话的在线 AI 编号、Roots 取得的真实窗口路径和已绑定项目；必须先调用 conversation.init。",
+    "读取当前 VS Code MCP 会话的在线 AI 编号、已验证的真实窗口路径和已绑定项目；必须先调用 conversation.init。",
     {
       readOnlyHint: true,
       destructiveHint: false,

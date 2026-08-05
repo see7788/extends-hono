@@ -25,7 +25,7 @@ todo-mcp-node/
 │       │       ├── node.del.POST                    // 删除节点树并推送正式 ID 集合
 │       │       ├── node.move.POST                   // 移动节点及其完整子树
 │       │       ├── node.set.POST                    // 修改节点并推送正式节点
-│       │       ├── conversation.init.POST           // 建立交流节点并绑定当前 MCP session 的在线 AI
+│       │       ├── conversation.init.POST           // 用项目路径与真实窗口 cwd 建立交流并绑定在线 AI
 │       │       ├── agent.me.POST                    // 读取当前在线 AI 编号、路径和项目
 │       │       ├── workspace.tree.POST              // 聚合容器内全部已登记项目及跨项目关系
 │       │       ├── workspace.relation.add.POST      // 新增跨项目关系

@@ -23,12 +23,7 @@ export type McpServerBindings = {
   mcpServer: {
     agentRuntimeActions: Store["agentRuntimeActions"];
     sessionId?: string;
-    windowPathGet?: () => Promise<string>;
   };
-};
-
-type ToolHandlerContext = {
-  windowPathGet(): Promise<string>;
 };
 
 export type ToolContractAnnotations = Omit<ToolAnnotations, "title"> & Required<Pick<
@@ -67,7 +62,6 @@ export type ToolRegistration = {
   handler: (
     arguments_: Record<string, unknown>,
     extra: Parameters<ToolCallback<z.ZodObject<z.ZodRawShape>>>[1],
-    context?: ToolHandlerContext,
   ) => ReturnType<ToolCallback<z.ZodObject<z.ZodRawShape>>>;
 };
 
@@ -256,7 +250,7 @@ export default class Register<
           inputSchema,
           annotations,
         },
-        handler: async (arguments_: Record<string, unknown>, extra, toolContext) => {
+        handler: async (arguments_: Record<string, unknown>, extra) => {
           let requestPath = "/";
           if (method === "GET" || method === "HEAD") {
             const search = new URLSearchParams();
@@ -276,7 +270,6 @@ export default class Register<
             mcpServer: {
               agentRuntimeActions: store.getState().agentRuntimeActions,
               sessionId: extra.sessionId,
-              windowPathGet: toolContext?.windowPathGet,
             },
           };
           const response = method === "GET" || method === "HEAD"
