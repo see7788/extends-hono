@@ -110,21 +110,6 @@ const projectMaintenance = z.object({
   projectPath: absolutePath,
   reason: z.literal("path_missing"),
 });
-const projectRelation = z.object({
-  sourceProjectId: z.number().int().positive(),
-  sourceProjectPath: absolutePath,
-  targetProjectId: z.number().int().positive(),
-  targetProjectPath: absolutePath,
-});
-const projectRelationInput = z.object({
-  sourceProjectPath: absolutePath,
-  targetProjectPath: absolutePath,
-});
-const workspaceTree = z.object({
-  workspacePath: absolutePath,
-  projectsById: z.record(z.string(), projectTree),
-  relations: z.array(projectRelation),
-});
 const projectResolve = z.object({
   workspacePath: currentWorkspacePath,
 });
@@ -133,14 +118,34 @@ const projectMigrate = z.object({
   targetProjectPath: currentWorkspacePath.describe("迁移后的真实项目绝对路径。"),
 });
 const projectMaintenanceInput = z.object({});
-const conversationInit = projectResolve.extend({
-  title: node.shape.title,
-  agent,
-  windowPath,
-  memberId: z.number().int().positive().optional().describe(
-    "本次交流对应的 typescript 成员节点 ID；空项目首次建立蓝图时省略，已有成员后必须提供。",
-  ),
+const projectAttentionInput = z.object({
+  projectIds: z.array(z.number().int().positive()).min(1).max(100),
 });
+const conversationInit = projectResolve.extend({
+  windowPath,
+});
+const taskTarget = z.object({
+  targetId: z.number().int().positive(),
+  title: node.shape.title,
+});
+const taskOpen = taskTarget.extend({
+  status: z.union([z.literal(2), z.literal(4)]).default(2),
+});
+const taskOpenMany = z.object({
+  targets: z.array(taskTarget.extend({
+    projectId: z.number().int().positive(),
+    status: z.union([z.literal(2), z.literal(4)]).default(2),
+  })).min(1).max(100),
+});
+const taskId = z.object({ taskId: z.number().int().positive() });
+const taskComplete = taskId.extend({ result: node.shape.title });
+const taskBlock = taskId.extend({
+  error: node.shape.title,
+  cause: node.shape.title,
+  evidence: node.shape.title,
+});
+const taskCancel = taskId.extend({ reason: node.shape.title });
+const taskDecision = taskId.extend({ title: node.shape.title });
 const nodeSearch = projectResolve.extend({
   title: z.string().trim().min(1).optional().describe("按 title 包含关系查询。"),
   template: template.optional(),
@@ -159,18 +164,23 @@ export const validator = {
   projectRegister: z.object({ projectPath: currentWorkspacePath }),
   projectMigrate,
   projectMaintenance: projectMaintenanceInput,
-  projectRelation: projectRelationInput,
+  projectAttention: projectAttentionInput,
   projectResolve,
   projectNodeRead: del.extend({ workspacePath: currentWorkspacePath }),
   set: setValue,
-  workspaceTree: projectResolve,
+  taskBlock,
+  taskCancel,
+  taskComplete,
+  taskDecision,
+  taskId,
+  taskOpen,
+  taskOpenMany,
 };
 
 export type TodoTreeNode = z.infer<typeof node>;
 export type TodoTreeState = z.infer<typeof treeState>;
-export type TodoTreeProject = z.infer<typeof projectTree>;
-export type ProjectAttention = z.infer<typeof projectAttention>;
-export type ProjectMaintenance = z.infer<typeof projectMaintenance>;
+type TodoTreeProject = z.infer<typeof projectTree>;
+type ProjectAttention = z.infer<typeof projectAttention>;
 
 const projectPath = fileURLToPath(new URL("../../", import.meta.url));
 const projectPathValue = process.platform === "win32"
@@ -197,12 +207,7 @@ database.exec(`
   );
   CREATE INDEX IF NOT EXISTS todotree_node_id_parent
     ON todotree_node(id_parent);
-  CREATE TABLE IF NOT EXISTS todotree_project_relation (
-    source_project_id INTEGER NOT NULL REFERENCES todotree_node(id) ON DELETE CASCADE,
-    target_project_id INTEGER NOT NULL REFERENCES todotree_node(id) ON DELETE CASCADE,
-    PRIMARY KEY (source_project_id, target_project_id),
-    CHECK (source_project_id <> target_project_id)
-  );
+  DROP TABLE IF EXISTS todotree_project_relation;
   INSERT INTO todotree_node (id, id_parent, title, template, status, agent)
     SELECT 1, NULL, 'TodoTree', 'project', 4, 1
     WHERE NOT EXISTS (SELECT 1 FROM todotree_node);
@@ -224,37 +229,6 @@ const projectsAll = database.prepare(`
   FROM todotree_node
   WHERE id_parent = 1 AND template = 'project'
   ORDER BY length(title) DESC, id
-`);
-const projectRelationByProjects = database.prepare(`
-  SELECT
-    relation.source_project_id AS sourceProjectId,
-    source.title AS sourceProjectPath,
-    relation.target_project_id AS targetProjectId,
-    target.title AS targetProjectPath
-  FROM todotree_project_relation AS relation
-  JOIN todotree_node AS source ON source.id = relation.source_project_id
-  JOIN todotree_node AS target ON target.id = relation.target_project_id
-  WHERE relation.source_project_id = ? AND relation.target_project_id = ?
-`);
-const projectRelationsAll = database.prepare(`
-  SELECT
-    relation.source_project_id AS sourceProjectId,
-    source.title AS sourceProjectPath,
-    relation.target_project_id AS targetProjectId,
-    target.title AS targetProjectPath
-  FROM todotree_project_relation AS relation
-  JOIN todotree_node AS source ON source.id = relation.source_project_id
-  JOIN todotree_node AS target ON target.id = relation.target_project_id
-  ORDER BY relation.source_project_id, relation.target_project_id
-`);
-const projectRelationInsert = database.prepare(`
-  INSERT INTO todotree_project_relation (source_project_id, target_project_id)
-  VALUES (?, ?)
-  ON CONFLICT (source_project_id, target_project_id) DO NOTHING
-`);
-const projectRelationDelete = database.prepare(`
-  DELETE FROM todotree_project_relation
-  WHERE source_project_id = ? AND target_project_id = ?
 `);
 const nodesAll = database.prepare(`
   SELECT id, id_parent, title, template, status, agent
@@ -309,18 +283,6 @@ const closedAncestor = database.prepare(`
     JOIN ancestors AS child ON child.id_parent = parent.id
   )
   SELECT id FROM ancestors WHERE status > 6 LIMIT 1
-`);
-const closedAncestorsRun = database.prepare(`
-  WITH RECURSIVE ancestors(id, id_parent) AS (
-    SELECT id, id_parent FROM todotree_node WHERE id = ?
-    UNION ALL
-    SELECT parent.id, parent.id_parent
-    FROM todotree_node AS parent
-    JOIN ancestors AS child ON child.id_parent = parent.id
-  )
-  UPDATE todotree_node
-  SET status = 4
-  WHERE status > 6 AND id IN (SELECT id FROM ancestors)
 `);
 const childNodes = database.prepare(`
   SELECT id, id_parent, title, template, status, agent
@@ -459,16 +421,6 @@ const projectRead = (value: string) => {
   }
   return project;
 };
-const projectExactRead = (value: string) => {
-  const path = workspacePathRead(value);
-  const row = projectByPath.get(path);
-  if (!row) {
-    throw new HTTPException(404, {
-      message: `TodoTree project is not registered: ${path}`,
-    });
-  }
-  return databaseNodeRead(row);
-};
 const registeredProjectRead = (value: string) => {
   const inputPath = resolve(absolutePath.parse(value));
   const path = existsSync(inputPath) ? resolve(realpathSync(inputPath)) : inputPath;
@@ -517,14 +469,32 @@ const projectAttentionByIdRead = (nodes: TodoTreeNode[]) => {
     }
     return projectId;
   };
+  const taskRootRead = (nodeValue: TodoTreeNode) => {
+    let current = nodeValue;
+    while (current.id_parent !== null) {
+      const parent = nodesById.get(current.id_parent);
+      if (!parent) return undefined;
+      if (parent.template === "project" || parent.template === "file" || parent.template === "typescript") {
+        return current.template === "markdown" ? current : undefined;
+      }
+      if (parent.template !== "markdown") return undefined;
+      current = parent;
+    }
+    return undefined;
+  };
   for (const nodeValue of nodes) {
-    const projectId = projectIdRead(nodeValue);
-    if (projectId === undefined || nodeValue.id === projectId) continue;
+    const taskRoot = taskRootRead(nodeValue);
+    if (!taskRoot) continue;
+    const projectId = projectIdRead(taskRoot);
+    if (projectId === undefined) continue;
     const attention = attentionByProjectId[projectId];
-    if (nodeValue.status === 1) attention.decisionIds.push(nodeValue.id);
-    if (nodeValue.status === 8) attention.blockedCount += 1;
-    if (nodeValue.status === 4) attention.runningCount += 1;
-    if (nodeValue.status === 2) attention.todoCount += 1;
+    if (nodeValue.id === taskRoot.id) {
+      if (nodeValue.status === 8) attention.blockedCount += 1;
+      if (nodeValue.status === 4) attention.runningCount += 1;
+      if (nodeValue.status === 2) attention.todoCount += 1;
+    } else if (nodeValue.status === 1) {
+      attention.decisionIds.push(nodeValue.id);
+    }
   }
   for (const attention of Object.values(attentionByProjectId)) {
     attention.decisionCount = attention.decisionIds.length;
@@ -553,14 +523,68 @@ const projectTreeRead = (projectId: number, rows = subtreeNodes.all(projectId)):
     attention,
   });
 };
+const taskUnfinishedDescendant = database.prepare(`
+  WITH RECURSIVE descendants(id, status) AS (
+    SELECT id, status FROM todotree_node WHERE id_parent = ?
+    UNION ALL
+    SELECT child.id, child.status
+    FROM todotree_node AS child
+    JOIN descendants AS parent ON child.id_parent = parent.id
+  )
+  SELECT id FROM descendants WHERE status <= 6 LIMIT 1
+`);
+const taskTargetRead = (projectId: number, targetId: number) => {
+  projectNodeAssert(projectId, targetId);
+  const target = nodeRead(targetId);
+  if (target.template !== "project" && target.template !== "file" && target.template !== "typescript") {
+    throw new HTTPException(409, {
+      message: "task.targetId 必须指向 project、file 或 typescript 节点。",
+    });
+  }
+  return target;
+};
+const projectIdForTargetRead = (projectIds: number[], targetId: number) => {
+  const projectId = projectIds.find(projectIdValue => projectContainsNode.get(projectIdValue, targetId));
+  if (projectId === undefined) {
+    throw new HTTPException(409, { message: "task.targetId 不属于当前 AI 已绑定的项目。" });
+  }
+  return projectId;
+};
+const taskRead = (taskId: number) => {
+  const task = nodeRead(taskId);
+  if (task.template !== "markdown") {
+    throw new HTTPException(409, { message: "taskId 必须指向 markdown 任务节点。" });
+  }
+  const parent = task.id_parent === null ? undefined : nodeRead(task.id_parent);
+  if (!parent || (parent.template !== "project" && parent.template !== "file" && parent.template !== "typescript")) {
+    throw new HTTPException(409, {
+      message: "任务节点必须直接挂在 project、file 或 typescript 节点下。",
+    });
+  }
+  return task;
+};
+const taskProjectAssert = (taskId: number, projectIds: number[]) => {
+  const task = taskRead(taskId);
+  if (!projectIds.some(projectId => projectContainsNode.get(projectId, task.id))) {
+    throw new HTTPException(409, { message: "taskId 不属于当前 AI 已绑定的项目。" });
+  }
+  return task;
+};
+const taskActiveAssert = (task: TodoTreeNode) => {
+  if (task.status !== 2 && task.status !== 4) {
+    throw new HTTPException(409, {
+      message: "task 生命周期动作只接受 status: 2 待办或 status: 4 工作中的任务。",
+    });
+  }
+};
 const decisionPlacementValidate = (parentNode: TodoTreeNode) => {
   let current: TodoTreeNode | undefined = parentNode;
   while (current) {
-    if (current.template === "typescript") return;
+    if (current.template === "typescript" || current.template === "markdown") return;
     current = current.id_parent === null ? undefined : nodeRead(current.id_parent);
   }
   throw new HTTPException(409, {
-    message: "status: 1 决策必须挂在受影响的 typescript 公开成员下面。",
+    message: "status: 1 待定节点必须位于真实任务或 typescript 公开成员下面。",
   });
 };
 const nodePlacementValidate = (
@@ -597,7 +621,7 @@ const nodePlacementValidate = (
   }
 };
 
-const store = {
+const todotreeActions = {
   add: database.transaction((options: z.input<typeof validator.add>) => {
     const optionsValue = validator.add.parse(options);
     const parentNode = nodeRead(optionsValue.id_parent);
@@ -619,7 +643,7 @@ const store = {
     const result: TodoTreeNode[] = [];
     const nodesAdd = (idParent: number, nodes: BatchNode[]) => {
       for (const { children = [], ...nodeValue } of nodes) {
-        const inserted = store.add({ ...nodeValue, id_parent: idParent });
+        const inserted = todotreeActions.add({ ...nodeValue, id_parent: idParent });
         result.push(inserted);
         nodesAdd(inserted.id, children);
       }
@@ -739,54 +763,19 @@ const store = {
     );
     return projectTreeRead(sourceProject.id);
   }),
-  workspaceRelationAdd: database.transaction((options: z.input<typeof validator.projectRelation>) => {
-    const optionsValue = validator.projectRelation.parse(options);
-    const sourceProject = projectExactRead(optionsValue.sourceProjectPath);
-    const targetProject = projectExactRead(optionsValue.targetProjectPath);
-    if (sourceProject.id === targetProject.id) {
-      throw new HTTPException(409, { message: "TodoTree project relation requires two projects." });
-    }
-    projectRelationInsert.run(sourceProject.id, targetProject.id);
-    return projectRelation.parse(projectRelationByProjects.get(sourceProject.id, targetProject.id));
-  }),
-  workspaceRelationDel: database.transaction((options: z.input<typeof validator.projectRelation>) => {
-    const optionsValue = validator.projectRelation.parse(options);
-    const sourceProject = projectExactRead(optionsValue.sourceProjectPath);
-    const targetProject = projectExactRead(optionsValue.targetProjectPath);
-    const relation = projectRelationByProjects.get(sourceProject.id, targetProject.id);
-    if (!relation) throw new HTTPException(404, { message: "TodoTree project relation does not exist." });
-    projectRelationDelete.run(sourceProject.id, targetProject.id);
-    return projectRelation.parse(relation);
-  }),
-  workspaceTree: (value: string) => {
-    const workspacePath = workspacePathRead(value);
-    const projects = projectsAll.all()
-      .map(databaseNodeRead)
-      .filter(project => projectContainsPath(workspacePath, project.title));
-    if (projects.length === 0) {
-      throw new HTTPException(404, {
-        message: "当前 Workspace 内没有已登记的具体项目。",
-      });
-    }
-    const projectIds = new Set(projects.map(project => project.id));
-    return workspaceTree.parse({
-      workspacePath,
-      projectsById: Object.fromEntries(projects.map(project => [
-        project.id,
-        projectTreeRead(project.id),
-      ])),
-      relations: projectRelationsAll.all()
-        .map(value => projectRelation.parse(value))
-        .filter(relation => (
-          projectIds.has(relation.sourceProjectId) || projectIds.has(relation.targetProjectId)
-        )),
-    });
+  projectAttention: (options: z.input<typeof validator.projectAttention>) => {
+    const { projectIds } = validator.projectAttention.parse(options);
+    const attentionByProjectId = projectAttentionByIdRead(nodesAll.all().map(databaseNodeRead));
+    return Object.fromEntries(projectIds.map(projectId => {
+      const projectNode = nodeRead(projectId);
+      if (projectNode.id_parent !== 1 || projectNode.template !== "project") {
+        throw new HTTPException(409, { message: `TodoTree project does not exist: ${String(projectId)}` });
+      }
+      const attention = attentionByProjectId[projectId];
+      if (!attention) throw new Error(`TodoTree project attention does not exist: ${String(projectId)}`);
+      return [projectId, attention];
+    }));
   },
-  projectAttention: (value: string) => {
-    const projectNode = projectRead(value);
-    return projectTreeRead(projectNode.id).attention;
-  },
-  projectAttentionList: () => projectAttentionByIdRead(nodesAll.all().map(databaseNodeRead)),
   projectList: () => projectsAll.all().map(databaseNodeRead),
   projectMaintenance: () => projectMaintenance.array().parse(
     projectsAll.all()
@@ -802,40 +791,102 @@ const store = {
     const projectNode = projectRead(value);
     return projectTreeRead(projectNode.id);
   },
-  conversationInit: database.transaction((options: z.input<typeof validator.conversationInit>) => {
+  conversationInit: (options: z.input<typeof validator.conversationInit>) => {
     const optionsValue = validator.conversationInit.parse(options);
-    const windowPath = workspacePathRead(optionsValue.windowPath);
-    const project = store.projectResolve(optionsValue.workspacePath);
-    let idParent = project.projectId;
-    if (optionsValue.memberId === undefined) {
-      if (Object.values(project.nodesById).some(nodeValue => nodeValue.template === "typescript")) {
-        throw new Error("当前项目已有源码成员；conversation.init 必须提供 memberId。");
-      }
-    } else {
-      projectNodeAssert(project.projectId, optionsValue.memberId);
-      const memberNode = nodeRead(optionsValue.memberId);
-      if (memberNode.template !== "typescript") {
-        throw new Error("conversation.init 的 memberId 必须指向 typescript 成员节点。");
-      }
-      idParent = memberNode.id;
-      closedAncestorsRun.run(memberNode.id);
-    }
-    const conversation = store.add({
-      id_parent: idParent,
-      title: optionsValue.title,
-      template: "markdown",
-      status: 4,
-      agent: optionsValue.agent,
-    });
+    const verifiedWindowPath = workspacePathRead(optionsValue.windowPath);
+    const project = todotreeActions.projectResolve(optionsValue.workspacePath);
     return {
       projectId: project.projectId,
-      conversationId: conversation.id,
-      windowPath,
-      nodesById: {
-        ...project.nodesById,
-        [conversation.id]: conversation,
-      },
+      windowPath: verifiedWindowPath,
+      nodesById: project.nodesById,
     };
+  },
+  taskOpen: database.transaction((options: z.input<typeof validator.taskOpen> & { projectIds: number[] }) => {
+    const optionsValue = validator.taskOpen.parse(options);
+    const projectId = projectIdForTargetRead(options.projectIds, optionsValue.targetId);
+    const target = taskTargetRead(projectId, optionsValue.targetId);
+    if (optionsValue.status <= 6 && closedAncestor.get(target.id)) {
+      throw new HTTPException(409, { message: "已收口节点的后代必须保持 status > 6 的收口状态。" });
+    }
+    const result = nodeInsert.run(
+      target.id,
+      optionsValue.title,
+      "markdown",
+      optionsValue.status,
+      1,
+    );
+    return nodeRead(Number(result.lastInsertRowid));
+  }),
+  taskOpenMany: database.transaction((options: z.input<typeof validator.taskOpenMany>) => {
+    const optionsValue = validator.taskOpenMany.parse(options);
+    const targets = optionsValue.targets.map(target => {
+      taskTargetRead(target.projectId, target.targetId);
+      return target;
+    });
+    for (const target of targets) {
+      if (target.status <= 6 && closedAncestor.get(target.targetId)) {
+        throw new HTTPException(409, { message: "已收口节点的后代必须保持 status > 6 的收口状态。" });
+      }
+    }
+    return targets.map(target => {
+      const result = nodeInsert.run(
+        target.targetId,
+        target.title,
+        "markdown",
+        target.status,
+        1,
+      );
+      return nodeRead(Number(result.lastInsertRowid));
+    });
+  }),
+  taskStart: database.transaction((options: z.input<typeof validator.taskId> & { projectIds: number[] }) => {
+    const { taskId } = validator.taskId.parse(options);
+    const task = taskProjectAssert(taskId, options.projectIds);
+    if (task.status !== 2) {
+      throw new HTTPException(409, { message: "task.start 只能启动 status: 2 待办任务。" });
+    }
+    nodeUpdate.run(task.title, task.template, 4, task.agent, task.id);
+    return nodeRead(task.id);
+  }),
+  taskComplete: database.transaction((options: z.input<typeof validator.taskComplete> & { projectIds: number[] }) => {
+    const optionsValue = validator.taskComplete.parse(options);
+    const task = taskProjectAssert(optionsValue.taskId, options.projectIds);
+    taskActiveAssert(task);
+    if (taskUnfinishedDescendant.get(task.id)) {
+      throw new HTTPException(409, { message: "任务仍有未收口后代，不能完成。" });
+    }
+    nodeInsert.run(task.id, optionsValue.result, "markdown", 7, 1);
+    nodeUpdate.run(task.title, task.template, 7, task.agent, task.id);
+    return nodeRead(task.id);
+  }),
+  taskBlock: database.transaction((options: z.input<typeof validator.taskBlock> & { projectIds: number[] }) => {
+    const optionsValue = validator.taskBlock.parse(options);
+    const task = taskProjectAssert(optionsValue.taskId, options.projectIds);
+    taskActiveAssert(task);
+    nodeInsert.run(
+      task.id,
+      `# 阻塞\n\n- error: ${optionsValue.error}\n- cause: ${optionsValue.cause}\n- evidence: ${optionsValue.evidence}`,
+      "markdown",
+      7,
+      1,
+    );
+    nodeUpdate.run(task.title, task.template, 8, task.agent, task.id);
+    return nodeRead(task.id);
+  }),
+  taskCancel: database.transaction((options: z.input<typeof validator.taskCancel> & { projectIds: number[] }) => {
+    const optionsValue = validator.taskCancel.parse(options);
+    const task = taskProjectAssert(optionsValue.taskId, options.projectIds);
+    taskActiveAssert(task);
+    nodeInsert.run(task.id, `# 取消\n\n${optionsValue.reason}`, "markdown", 7, 1);
+    nodeUpdate.run(task.title, task.template, 9, task.agent, task.id);
+    return nodeRead(task.id);
+  }),
+  taskDecision: database.transaction((options: z.input<typeof validator.taskDecision> & { projectIds: number[] }) => {
+    const optionsValue = validator.taskDecision.parse(options);
+    const task = taskProjectAssert(optionsValue.taskId, options.projectIds);
+    taskActiveAssert(task);
+    const result = nodeInsert.run(task.id, optionsValue.title, "markdown", 1, 1);
+    return nodeRead(Number(result.lastInsertRowid));
   }),
   projectTree: (value: string) => {
     const projectNode = projectRead(value);
@@ -894,5 +945,6 @@ const store = {
     });
   },
 };
+const store = { todotreeActions };
 
 export default store;

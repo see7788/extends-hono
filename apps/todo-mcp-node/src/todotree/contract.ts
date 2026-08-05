@@ -36,7 +36,7 @@ type Agent = z.infer<typeof agent>;
 type Status = z.infer<typeof status>;
 type Template = z.infer<typeof template>;
 
-export const agentOptions = Object.freeze([
+const agentOptions = Object.freeze([
   { label: label.parse(agentValue.description), value: agentValue.value },
 ] satisfies Option<Agent>[]);
 

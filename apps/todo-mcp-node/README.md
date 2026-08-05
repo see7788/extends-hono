@@ -8,56 +8,72 @@
 todo-mcp-node/
 ├── src/
 │   ├── index.ts
-│   │   └── honoServer(router)                       // 启动 Vite 已配置的 Hono 服务
 │   ├── routers.ts
-│   │   ├── TodoMcpApi: type                        // 供前端 hc 消费完整 Hono 类型
-│   │   └── default: Hono                           // 注册 create-todo-cli、honoapp、todotree 与页面
+│   │   ├── type TodoMcpApi = typeof router
+│   │   │   // 交付前端 hc 消费的完整 Hono API 类型。
+│   │   └── default: Hono
+│   │       // 组合 mcp-server、honoapp、mcpcreate-lib 与 todotree；调用 todotree/index.default。
 │   └── todotree/
 │       ├── contract.ts
-│       │   ├── statusOptions                       // 交付页面与 MCP 共用的完整 1-9 状态；status > 6 是收口
-│       │   ├── statusOptionsVisible                // 页面暂不展示工作队未启用的 3、5、6
-│       │   ├── templateOptions                     // 交付页面与 MCP 共用的节点模板数字和名称
-│       │   └── contractValidator                   // 交付 agent、status 与 template 的唯一验证器
-│       ├── index.ts
-│       │   └── default: Register
-│       │       ├── node.add.POST                    // 准入后新增一个节点并推送正式节点
-│       │       ├── node.batch.POST                  // 准入后在一个事务中新增完整节点树
-│       │       ├── node.del.POST                    // 准入后删除节点树并推送正式 ID 集合
-│       │       ├── node.move.POST                   // 准入后移动节点及其完整子树
-│       │       ├── node.set.POST                    // 准入后修改节点并推送正式节点
-│       │       ├── conversation.init.POST           // 唯一生产命名空间准入、具体成员任务与在线 AI
-│       │       ├── agent.me.POST                    // 读取当前在线 AI 编号、路径和项目
-│       │       ├── workspace.tree.POST              // 聚合容器内全部已登记项目及跨项目关系
-│       │       ├── workspace.relation.add.POST      // 准入后新增跨项目关系
-│       │       ├── workspace.relation.del.POST      // 准入后删除跨项目关系
-│       │       ├── project.attention.POST           // 读取项目后代节点派生的关注数量
-│       │       ├── project.maintenance.POST         // 读取路径失效项目并交付迁移维护清单
-│       │       ├── project.resolve.POST             // 把任意项目内路径解析到唯一项目
-│       │       ├── project.tree.POST                // 读取一个项目的完整树与关注数据
-│       │       ├── project.migrate.POST             // 迁移项目地址并保留 ID、子树与跨项目关系
-│       │       ├── project.register.POST            // 登记一个真实具体项目
-│       │       ├── project.list.GET                 // 读取全部已登记项目
-│       │       ├── node.get.POST                    // 读取项目内指定节点
-│       │       ├── node.children.POST               // 读取指定节点的直接子节点
-│       │       ├── node.context.POST                // 读取指定节点的祖先、当前节点与直接子节点
-│       │       ├── node.search.POST                 // 在指定项目内按条件查找节点
-│       │       ├── tree.GET                         // 读取 SQLite 生产的完整 TodoTree 数据
-│       │       └── events.GET                       // 向页面交付任务树与在线 AI 的 SSE 变化
-│       └── store.ts
-│           ├── validator                           // 生产接口与 SQLite 共同使用的验证器
-│           ├── TodoTreeNode: type                  // 交付正式节点类型
-│           ├── TodoTreeState: type                 // 交付正式任务树与 projectPathExistsById
-│           ├── TodoTreeProject: type               // 交付项目书与 projectPathExists
-│           ├── ProjectMaintenance: type             // 交付失效项目的迁移维护数据
-│           └── default
-│               ├── add(options): TodoTreeNode       // 在事务中新增节点
-│               ├── batch(options): TodoTreeNode[]   // 在同一事务中新增完整节点树
-│               ├── del(id): number[]                // 在事务中删除节点及全部后代
-│               ├── move(options): TodoTreeNode      // 在事务中移动节点树
-│               ├── set(options): TodoTreeNode       // 在事务中修改并读取正式节点
-│               ├── projectMigrate(options)          // 迁移项目路径并保留原项目数据关系
-│               ├── projectMaintenance()             // 生产登记但已失效项目的迁移维护清单
-│               └── tree(): TodoTreeState            // 从 SQLite 生产完整任务树
+│       │   ├── const statusOptions: readonly Option<Status>[]
+│       │   │   // 生产 Hono、MCP 与页面共用的完整 1-9 状态映射。
+│       │   ├── const statusOptionsVisible: readonly Option<Status>[]
+│       │   │   // 生产未启用工作队时的页面状态入口。
+│       │   ├── const templateOptions: readonly Option<Template>[]
+│       │   │   // 生产 Hono、MCP 与页面共用的节点模板映射。
+│       │   └── const contractValidator: { agent; status; template }
+│       │       // 生产节点原始字段的唯一验证器。
+│       ├── store.ts
+│       │   ├── [内] const validator: { add; batch; conversationInit; del; move; nodeSearch;
+│       │   │     projectAttention; projectMaintenance; projectMigrate; projectNodeRead;
+│       │   │     projectRegister; projectResolve; set; taskBlock; taskCancel; taskComplete;
+│       │   │     taskDecision; taskId; taskOpen; taskOpenMany }
+│       │   │   // 生产 index.ts 注册 Hono 与 MCP 所需的输入契约；调用 contract.contractValidator。
+│       │   ├── type TodoTreeNode = z.infer<typeof node>
+│       │   │   // 交付前端消费的唯一正式节点类型。
+│       │   ├── type TodoTreeState = z.infer<typeof treeState>
+│       │   │   // 交付前端消费的完整树、路径存在状态和任务关注数据。
+│       │   └── [内] default: {
+│       │       todotreeActions: {
+│       │         add(options): TodoTreeNode;
+│       │         batch(options): TodoTreeNode[];
+│       │         del(id: number): number[];
+│       │         move(options): TodoTreeNode;
+│       │         set(options): TodoTreeNode;
+│       │         projectRegister(projectPath: string): TodoTreeProject;
+│       │         projectMigrate(options): TodoTreeProject;
+│       │         projectAttention(options): Record<number, ProjectAttention>;
+│       │         projectList(): TodoTreeNode[];
+│       │         projectMaintenance(): {
+│       │           projectId: number;
+│       │           projectPath: string;
+│       │           reason: "path_missing";
+│       │         }[];
+│       │         projectResolve(workspacePath: string): TodoTreeProject;
+│       │         conversationInit(options): {
+│       │           projectId: number;
+│       │           windowPath: string;
+│       │           nodesById: Record<number, TodoTreeNode>;
+│       │         };
+│       │         taskOpen(options): TodoTreeNode;
+│       │         taskOpenMany(options): TodoTreeNode[];
+│       │         taskStart(options): TodoTreeNode;
+│       │         taskComplete(options): TodoTreeNode;
+│       │         taskBlock(options): TodoTreeNode;
+│       │         taskCancel(options): TodoTreeNode;
+│       │         taskDecision(options): TodoTreeNode;
+│       │         projectTree(workspacePath: string): TodoTreeProject;
+│       │         projectNodeGet(options): TodoTreeNode;
+│       │         projectNodeChildren(options): TodoTreeNode[];
+│       │         projectNodeContext(options): TodoTreeProject;
+│       │         projectNodeSearch(options): TodoTreeNode[];
+│       │         tree(): TodoTreeState;
+│       │       };
+│       │     }
+│       │       // 只维护 todotree_node 原始表，并生产项目、任务、查询和迁移结果。
+│       └── index.ts
+│           └── default: Register
+│               // 交付 TodoTree Hono/MCP 接口与 SSE；调用 contract.templateOptions、store.default.todotreeActions。
 ├── vite.config.ts                                  // 固定 3005 并构建 todotree
 └── package.json
 ```
@@ -68,4 +84,13 @@ todo-mcp-node/
 pnpm --filter todo-mcp-node dev
 ```
 
-TodoTree 页面位于 `http://127.0.0.1:3005/todotree/`，MCP 位于 `http://127.0.0.1:3005/todo-mcp`；SQLite 位于 `join(homedir(), ".store", md5(projectPath), "store.sqlite")`。项目行显示在线 AI 的 `#编号`，悬停编号可读取该 VS Code 窗口的完整工作路径。MCP 可在初始化前读取项目书并选择具体成员；节点和跨项目关系写入必须消费 `conversation.init` 生产的当前 session 准入，普通 Hono 页面调用不受该限制。
+```ts
+import { hc } from "hono/client";
+import type { TodoMcpApi } from "todo-mcp-node/src/routers.ts";
+
+const client = hc<TodoMcpApi>(window.location.origin);
+const response = await client["todo-mcp-node"].tree.$get();
+const tree = await response.json();
+```
+
+TodoTree 页面位于 `http://127.0.0.1:3005/todotree/`，MCP 位于 `http://127.0.0.1:3005/todo-mcp`；SQLite 位于 `join(homedir(), ".store", md5(projectPath), "store.sqlite")`。AI 先调用 `conversation.init` 绑定真实窗口与项目，再用 `task.open` 或 `task.openMany` 建立任务；普通 Hono 页面调用不受 MCP 会话约束。

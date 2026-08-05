@@ -9,10 +9,11 @@ import { templateOptions } from "./contract.ts";
 import store, { validator } from "./store.ts";
 
 const agentMeInput = z.object({});
+const { todotreeActions } = store;
 type TodoTreeEnv = { Bindings: Partial<McpServerBindings> };
-const conversationAssert = (context: Context<TodoTreeEnv>) => {
+const conversationRuntimeRead = (context: Context<TodoTreeEnv>) => {
   const mcpServer = context.env.mcpServer;
-  if (!mcpServer) return;
+  if (!mcpServer) return undefined;
   const sessionId = mcpServer.sessionId;
   if (!sessionId) {
     throw new HTTPException(409, {
@@ -20,12 +21,17 @@ const conversationAssert = (context: Context<TodoTreeEnv>) => {
     });
   }
   try {
-    mcpServer.agentRuntimeActions.sessionGet(sessionId);
+    return mcpServer.agentRuntimeActions.sessionGet(sessionId);
   } catch (cause) {
     throw new HTTPException(409, {
       cause,
       message: "当前 MCP 会话尚未调用 conversation.init。",
     });
+  }
+};
+const conversationAssert = (context: Context<TodoTreeEnv>) => {
+  if (!conversationRuntimeRead(context) && context.env.mcpServer) {
+    throw new HTTPException(409, { message: "当前 MCP 会话尚未调用 conversation.init。" });
   }
 };
 const streams = new Set<SSEStreamingApi>();
@@ -56,7 +62,7 @@ const projectTreeContract = `初始化项目交流并读取当前完整项目书
 
 源码蓝图初始刚好三层：第一层 template=${templateOptions[0].value}，是完整项目路径；第二层 template=${templateOptions[1].value}，是从项目根开始的完整相对文件路径，文件即使经过多层目录也只生产这一行，严禁把中间目录建成节点；第三层 template=${templateOptions[2].value}，只列该文件真实公开成员，使用可成立的标准 TypeScript 类型或签名美化表达。成员下一行用 // 先写具体用途；该成员实际消费其他生产者时，继续写“调用 相对文件路径.成员()”，只记录直接调用，不越级展开。实现库时，非成品消费者入口但因库内实现必须导出的成员统一在签名前标记 [内]；私有成员、占位成员和无真实用途的导出不得进入项目书。
 
-三层只定义初始源码蓝图，不限制整棵项目 tree 的深度。项目书成立后，每次交流以具体 typescript 成员节点为锚点，问题、目标、决策、实现、验证和结果作为其后代继续任意深度生长；conversation.init 必须传入该 memberId。空项目首次建立蓝图时尚无成员，可以省略 memberId，把首次交流临时挂到 project 节点。
+三层只定义初始源码蓝图，不限制整棵项目 tree 的深度。conversation.init 只验证当前 AI、真实窗口、工作路径并绑定项目，不创建任务、不接收 memberId、targetId、title，也不修改任何节点。完成初始化后，使用 task.open 或 task.openMany 在 project、file 或 typescript 节点下创建 Markdown 任务；任务的 start、complete、block、cancel 与 decision 通过对应 task 接口完成。
 
 正确：
 project/
@@ -71,11 +77,11 @@ project/
 
 错误：把 project、public、feature 等路径片段逐层建立为目录节点，再把 index.ts 或 web.ts 放到目录节点下面；只写签名却省略用途与直接消费链；把私有成员或无消费者的导出写进项目书。
 
-交流规则：status: 1 只表示需要人类回答的待定事项，必须处于受影响的 typescript 公开成员后代；AI 应一次性列出当前已知的全部待定事项。status: 2 只表示 AI 自己的实现待办，不要求人类回复。status <= 6 表示未收口，status > 6 统一表示收口；7 完成是正常收口，8 阻塞收口，9 取消收口。人类回答后，AI 立即把对应待定事项改为完成或取消。每次回复前调用 project.attention；第一行只写全部待定 ID，例如“待你决策：#12、#15”，没有待定时只写“无”。项目根 status 只表达项目生命周期，严禁因存在待定事项而修改项目根。`;
+交流规则：status: 1 只表示任务下的待定事项；status: 2 表示任务待办；status: 4 表示任务工作中；status <= 6 表示未收口，status > 6 统一表示收口。任务必须通过 task.open/task.openMany 创建，源码蓝图节点不计入 attention。人类回答后，AI 立即把对应待定事项改为完成或取消。每次回复前调用 project.attention；第一行只写全部待定 ID，例如“待你决策：#12、#15”，没有待定时只写“无”。项目根 status 只表达项目生命周期，严禁因存在待定事项而修改项目根。`;
 
 export default new Register({
   namespace: "todo-mcp-node",
-  description: "供人类与 AI 共同维护具体项目 tree；Hono 登记项目，AI 用 conversation.init 解析当前工作路径并建立交流节点。",
+  description: "供人类与 AI 共同维护具体项目 tree；Hono 登记项目，AI 用 conversation.init 验证会话并绑定项目。",
 })
   .register(
     "/node/add",
@@ -85,14 +91,24 @@ export default new Register({
       async context => {
         conversationAssert(context);
         const options = context.req.valid("json");
-        const nodeValue = store.add(options);
+        if (context.env.mcpServer && options.template === "markdown") {
+          throw new HTTPException(409, {
+            message: "AI 任务必须使用 task.open；node.add 不生产任务节点。",
+          });
+        }
+        if (context.env.mcpServer && options.status === 1) {
+          throw new HTTPException(409, {
+            message: "AI 待定事项必须使用 task.decision；node.add 不生产任务决策。",
+          });
+        }
+        const nodeValue = todotreeActions.add(options);
         await eventSend({ event: "add", data: nodeValue });
-        await eventSend({ event: "attention", data: store.projectAttentionList() });
+        await eventSend({ event: "attention", data: todotreeActions.tree().projectAttentionById });
         return context.json(nodeValue, 200);
       },
     ),
     validator.add,
-    "人类与 AI 共用：新增正式节点。AI 必须先调用 conversation.init，并遵守 template 生产关系；project→file→typescript 是初始三层源码蓝图。",
+    "人类与 AI 共用：新增正式节点。AI 必须先调用 conversation.init；源码蓝图用 project→file→typescript，Markdown 任务必须用 task.open。",
     {
       readOnlyHint: false,
       destructiveHint: false,
@@ -107,13 +123,22 @@ export default new Register({
       zValidator("json", validator.batch),
       async context => {
         conversationAssert(context);
-        const nodes = store.batch(context.req.valid("json"));
-        await eventSend({ event: "tree", data: store.tree() });
+        const options = context.req.valid("json");
+        const taskFound = (nodes: typeof options.nodes): boolean => nodes.some(node => (
+          node.template === "markdown" || node.status === 1 || taskFound(node.children ?? [])
+        ));
+        if (context.env.mcpServer && taskFound(options.nodes)) {
+          throw new HTTPException(409, {
+            message: "AI 任务与待定事项必须使用 task.openMany/task.decision；node.batch 不生产任务节点。",
+          });
+        }
+        const nodes = todotreeActions.batch(options);
+        await eventSend({ event: "tree", data: todotreeActions.tree() });
         return context.json(nodes, 200);
       },
     ),
     validator.batch,
-    "人类与 AI 共用：在一个 SQLite transaction 中递归新增一批节点；任一节点失败时整批不写入；MCP 调用必须先完成 conversation.init。",
+    "人类与 AI 共用：在一个 SQLite transaction 中递归新增源码蓝图节点；Markdown 任务必须用 task.openMany；任一节点失败时整批不写入。",
     {
       readOnlyHint: false,
       destructiveHint: false,
@@ -129,10 +154,10 @@ export default new Register({
       async context => {
         conversationAssert(context);
         const { id } = context.req.valid("json");
-        const ids = store.del(id);
+        const ids = todotreeActions.del(id);
         const result = { ids };
         await eventSend({ event: "del", data: ids });
-        await eventSend({ event: "attention", data: store.projectAttentionList() });
+        await eventSend({ event: "attention", data: todotreeActions.tree().projectAttentionById });
         return context.json(result, 200);
       },
     ),
@@ -152,9 +177,9 @@ export default new Register({
       zValidator("json", validator.move),
       async context => {
         conversationAssert(context);
-        const nodeValue = store.move(context.req.valid("json"));
+        const nodeValue = todotreeActions.move(context.req.valid("json"));
         await eventSend({ event: "set", data: nodeValue });
-        await eventSend({ event: "attention", data: store.projectAttentionList() });
+        await eventSend({ event: "attention", data: todotreeActions.tree().projectAttentionById });
         return context.json(nodeValue, 200);
       },
     ),
@@ -175,9 +200,9 @@ export default new Register({
       async context => {
         conversationAssert(context);
         const options = context.req.valid("json");
-        const nodeValue = store.set(options);
+        const nodeValue = todotreeActions.set(options);
         await eventSend({ event: "set", data: nodeValue });
-        await eventSend({ event: "attention", data: store.projectAttentionList() });
+        await eventSend({ event: "attention", data: todotreeActions.tree().projectAttentionById });
         return context.json(nodeValue, 200);
       },
     ),
@@ -203,19 +228,11 @@ export default new Register({
             message: "当前 MCP transport 未提供 sessionId，不能登记在线 AI。",
           });
         }
-        const result = store.conversationInit(options);
+        const result = todotreeActions.conversationInit(options);
         const agent = context.env.mcpServer.agentRuntimeActions.projectBind({
           projectId: result.projectId,
           sessionId,
           windowPath: result.windowPath,
-        });
-        await eventSend({ event: "tree", data: store.tree() });
-        await eventSend({
-          event: "node",
-          data: store.projectNodeGet({
-            id: result.conversationId,
-            workspacePath: options.workspacePath,
-          }),
         });
         return context.json({ ...result, agent }, 200);
       },
@@ -253,69 +270,191 @@ export default new Register({
       openWorldHint: false,
     },
   )
-  .register(
-    "/workspace/tree",
-    new Hono().post(
-      "/",
-      zValidator("json", validator.workspaceTree),
-      context => context.json(store.workspaceTree(context.req.valid("json").workspacePath), 200),
-    ),
-    validator.workspaceTree,
-    "读取当前 Workspace 下全部已登记具体项目的完整项目书，以及与这些项目相连的跨库有向关系；projectPathExists 为 false 的历史项目路径必须迁移后再作为当前根使用。",
-    {
-      readOnlyHint: true,
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: false,
-    },
-  )
-  .register(
-    "/workspace/relation/add",
+  .mcpAdd(
+    "/task/open",
     new Hono<TodoTreeEnv>().post(
       "/",
-      zValidator("json", validator.projectRelation),
-      context => {
-        conversationAssert(context);
-        return context.json(store.workspaceRelationAdd(context.req.valid("json")), 200);
+      zValidator("json", validator.taskOpen),
+      async context => {
+        const runtime = conversationRuntimeRead(context);
+        if (!runtime) throw new HTTPException(409, { message: "当前 MCP 会话尚未调用 conversation.init。" });
+        const task = todotreeActions.taskOpen({
+          ...context.req.valid("json"),
+          projectIds: runtime.projectIds,
+        });
+        await eventSend({ event: "add", data: task });
+        await eventSend({ event: "attention", data: todotreeActions.tree().projectAttentionById });
+        return context.json(task, 200);
       },
     ),
-    validator.projectRelation,
-    "人类与 AI 共用：在两个已登记具体项目之间新增一条有向跨库关系；MCP 调用必须先完成 conversation.init。",
+    validator.taskOpen,
+    "在当前 AI 已绑定项目内创建一个 project、file 或 typescript 目标下的 Markdown 任务。",
     {
       readOnlyHint: false,
       destructiveHint: false,
-      idempotentHint: true,
+      idempotentHint: false,
       openWorldHint: false,
     },
   )
-  .register(
-    "/workspace/relation/del",
+  .mcpAdd(
+    "/task/open-many",
     new Hono<TodoTreeEnv>().post(
       "/",
-      zValidator("json", validator.projectRelation),
-      context => {
-        conversationAssert(context);
-        return context.json(store.workspaceRelationDel(context.req.valid("json")), 200);
+      zValidator("json", validator.taskOpenMany),
+      async context => {
+        const runtime = conversationRuntimeRead(context);
+        if (!runtime) throw new HTTPException(409, { message: "当前 MCP 会话尚未调用 conversation.init。" });
+        const options = context.req.valid("json");
+        if (options.targets.some(target => !runtime.projectIds.includes(target.projectId))) {
+          throw new HTTPException(409, { message: "task.openMany 的 projectId 不属于当前 AI 已绑定项目。" });
+        }
+        const tasks = todotreeActions.taskOpenMany(options);
+        await eventSend({ event: "tree", data: todotreeActions.tree() });
+        await eventSend({ event: "attention", data: todotreeActions.tree().projectAttentionById });
+        return context.json(tasks, 200);
       },
     ),
-    validator.projectRelation,
-    "人类与 AI 共用：删除两个已登记具体项目之间的一条有向跨库关系；MCP 调用必须先完成 conversation.init。",
+    validator.taskOpenMany,
+    "在一个事务中向当前 AI 已绑定的多个具体项目登记任务；任一目标不合法时整批不写入。",
     {
       readOnlyHint: false,
-      destructiveHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  )
+  .mcpAdd(
+    "/task/start",
+    new Hono<TodoTreeEnv>().post(
+      "/",
+      zValidator("json", validator.taskId),
+      async context => {
+        const runtime = conversationRuntimeRead(context);
+        if (!runtime) throw new HTTPException(409, { message: "当前 MCP 会话尚未调用 conversation.init。" });
+        const task = todotreeActions.taskStart({ ...context.req.valid("json"), projectIds: runtime.projectIds });
+        await eventSend({ event: "set", data: task });
+        await eventSend({ event: "attention", data: todotreeActions.tree().projectAttentionById });
+        return context.json(task, 200);
+      },
+    ),
+    validator.taskId,
+    "把当前 AI 已绑定项目中的待办任务改为工作中。",
+    {
+      readOnlyHint: false,
+      destructiveHint: false,
       idempotentHint: true,
       openWorldHint: false,
     },
   )
   .mcpAdd(
-    "/project/attention",
-    new Hono().post(
+    "/task/complete",
+    new Hono<TodoTreeEnv>().post(
       "/",
-      zValidator("json", validator.projectResolve),
-      context => context.json(store.projectAttention(context.req.valid("json").workspacePath), 200),
+      zValidator("json", validator.taskComplete),
+      async context => {
+        const runtime = conversationRuntimeRead(context);
+        if (!runtime) throw new HTTPException(409, { message: "当前 MCP 会话尚未调用 conversation.init。" });
+        const task = todotreeActions.taskComplete({ ...context.req.valid("json"), projectIds: runtime.projectIds });
+        await eventSend({ event: "tree", data: todotreeActions.tree() });
+        await eventSend({ event: "attention", data: todotreeActions.tree().projectAttentionById });
+        return context.json(task, 200);
+      },
     ),
-    validator.projectResolve,
-    "实时读取当前项目后代节点派生的待定、阻塞、工作中和待办数量。项目根状态不参与计数，也不会被改写。AI 每次回复前调用本接口：decisionIds 非空时第一行列出全部待定 ID，否则第一行只写“无”。",
+    validator.taskComplete,
+    "在任务后代全部收口后保存验收结果并完成任务。",
+    {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  )
+  .mcpAdd(
+    "/task/block",
+    new Hono<TodoTreeEnv>().post(
+      "/",
+      zValidator("json", validator.taskBlock),
+      async context => {
+        const runtime = conversationRuntimeRead(context);
+        if (!runtime) throw new HTTPException(409, { message: "当前 MCP 会话尚未调用 conversation.init。" });
+        const task = todotreeActions.taskBlock({ ...context.req.valid("json"), projectIds: runtime.projectIds });
+        await eventSend({ event: "tree", data: todotreeActions.tree() });
+        await eventSend({ event: "attention", data: todotreeActions.tree().projectAttentionById });
+        return context.json(task, 200);
+      },
+    ),
+    validator.taskBlock,
+    "保存阻塞原因与证据，并把任务收口为阻塞。",
+    {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  )
+  .mcpAdd(
+    "/task/cancel",
+    new Hono<TodoTreeEnv>().post(
+      "/",
+      zValidator("json", validator.taskCancel),
+      async context => {
+        const runtime = conversationRuntimeRead(context);
+        if (!runtime) throw new HTTPException(409, { message: "当前 MCP 会话尚未调用 conversation.init。" });
+        const task = todotreeActions.taskCancel({ ...context.req.valid("json"), projectIds: runtime.projectIds });
+        await eventSend({ event: "tree", data: todotreeActions.tree() });
+        await eventSend({ event: "attention", data: todotreeActions.tree().projectAttentionById });
+        return context.json(task, 200);
+      },
+    ),
+    validator.taskCancel,
+    "保存取消原因，并把任务收口为取消。",
+    {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  )
+  .mcpAdd(
+    "/task/decision",
+    new Hono<TodoTreeEnv>().post(
+      "/",
+      zValidator("json", validator.taskDecision),
+      async context => {
+        const runtime = conversationRuntimeRead(context);
+        if (!runtime) throw new HTTPException(409, { message: "当前 MCP 会话尚未调用 conversation.init。" });
+        const decision = todotreeActions.taskDecision({ ...context.req.valid("json"), projectIds: runtime.projectIds });
+        await eventSend({ event: "add", data: decision });
+        await eventSend({ event: "attention", data: todotreeActions.tree().projectAttentionById });
+        return context.json(decision, 200);
+      },
+    ),
+    validator.taskDecision,
+    "在真实任务下登记一项待定决策。",
+    {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  )
+  .mcpAdd(
+    "/project/attention",
+    new Hono<TodoTreeEnv>().post(
+      "/",
+      zValidator("json", validator.projectAttention),
+      context => {
+        const runtime = conversationRuntimeRead(context);
+        if (!runtime) throw new HTTPException(409, { message: "当前 MCP 会话尚未调用 conversation.init。" });
+        const options = context.req.valid("json");
+        if (options.projectIds.some(projectId => !runtime.projectIds.includes(projectId))) {
+          throw new HTTPException(409, { message: "project.attention 的 projectIds 不属于当前 AI 已绑定项目。" });
+        }
+        return context.json(todotreeActions.projectAttention(options), 200);
+      },
+    ),
+    validator.projectAttention,
+    "按 projectIds 批量读取当前 AI 已绑定项目中真实任务派生的待定、阻塞、工作中和待办数量；源码蓝图节点不参与计数。AI 每次回复前调用本接口：任一 decisionIds 非空时第一行列出全部待定 ID，否则第一行只写“无”。",
     {
       readOnlyHint: true,
       destructiveHint: false,
@@ -328,7 +467,7 @@ export default new Register({
     new Hono().post(
       "/",
       zValidator("json", validator.projectMaintenance),
-      context => context.json(store.projectMaintenance(), 200),
+      context => context.json(todotreeActions.projectMaintenance(), 200),
     ),
     validator.projectMaintenance,
     "读取所有登记但路径已失效的具体项目；返回 projectId、projectPath 和 reason，AI 必须使用 project.migrate 修复后再维护项目。没有失效项目时返回空数组。",
@@ -344,7 +483,7 @@ export default new Register({
     new Hono().post(
       "/",
       zValidator("json", validator.projectResolve),
-      context => context.json(store.projectResolve(context.req.valid("json").workspacePath), 200),
+      context => context.json(todotreeActions.projectResolve(context.req.valid("json").workspacePath), 200),
     ),
     validator.projectResolve,
     "把当前绝对工作路径解析到最近的已登记祖先项目并返回完整项目书；projectPathExists 为 false 时说明历史路径已失效，应迁移后再使用；不创建项目，也不返回其他项目。",
@@ -360,7 +499,7 @@ export default new Register({
     new Hono().post(
       "/",
       zValidator("json", validator.projectResolve),
-      context => context.json(store.projectTree(context.req.valid("json").workspacePath), 200),
+      context => context.json(todotreeActions.projectTree(context.req.valid("json").workspacePath), 200),
     ),
     validator.projectResolve,
     "读取当前项目完整项目书；projectPathExists 为 false 时说明登记路径已失效，应使用 project.migrate；不创建交流节点，也不返回其他项目。",
@@ -377,13 +516,13 @@ export default new Register({
       "/",
       zValidator("json", validator.projectMigrate),
       async context => {
-        const project = store.projectMigrate(context.req.valid("json"));
-        await eventSend({ event: "tree", data: store.tree() });
+        const project = todotreeActions.projectMigrate(context.req.valid("json"));
+        await eventSend({ event: "tree", data: todotreeActions.tree() });
         return context.json(project, 200);
       },
     ),
     validator.projectMigrate,
-    "人类与 AI 共用：把一个已登记项目迁移到新的真实绝对路径；保留项目 ID、完整子树和跨库关系，并拒绝 pnpm 容器或已被其他项目占用的目标路径。",
+    "人类与 AI 共用：把一个已登记项目迁移到新的真实绝对路径；保留项目 ID 与完整子树，并拒绝 pnpm 容器或已被其他项目占用的目标路径。",
     {
       readOnlyHint: false,
       destructiveHint: false,
@@ -397,22 +536,22 @@ export default new Register({
       "/",
       zValidator("json", validator.projectRegister),
       async context => {
-        const project = store.projectRegister(context.req.valid("json").projectPath);
-        await eventSend({ event: "tree", data: store.tree() });
+        const project = todotreeActions.projectRegister(context.req.valid("json").projectPath);
+        await eventSend({ event: "tree", data: todotreeActions.tree() });
         return context.json(project, 200);
       },
     ),
   )
   .honoAdd(
     "/project/list",
-    new Hono().get("/", context => context.json(store.projectList(), 200)),
+    new Hono().get("/", context => context.json(todotreeActions.projectList(), 200)),
   )
   .mcpAdd(
     "/node/get",
     new Hono().post(
       "/",
       zValidator("json", validator.projectNodeRead),
-      context => context.json(store.projectNodeGet(context.req.valid("json")), 200),
+      context => context.json(todotreeActions.projectNodeGet(context.req.valid("json")), 200),
     ),
     validator.projectNodeRead,
     "按节点 ID 读取当前项目内一个正式节点；节点不属于当前项目时拒绝读取。",
@@ -428,7 +567,7 @@ export default new Register({
     new Hono().post(
       "/",
       zValidator("json", validator.projectNodeRead),
-      context => context.json(store.projectNodeChildren(context.req.valid("json")), 200),
+      context => context.json(todotreeActions.projectNodeChildren(context.req.valid("json")), 200),
     ),
     validator.projectNodeRead,
     "读取当前项目内指定节点的直接子节点，不递归读取后代。",
@@ -444,7 +583,7 @@ export default new Register({
     new Hono().post(
       "/",
       zValidator("json", validator.projectNodeRead),
-      context => context.json(store.projectNodeContext(context.req.valid("json")), 200),
+      context => context.json(todotreeActions.projectNodeContext(context.req.valid("json")), 200),
     ),
     validator.projectNodeRead,
     "读取当前项目内指定节点的精确上下文：返回从项目根到该节点的完整祖先链，以及该节点的全部子节点；节点不属于当前项目时拒绝读取。",
@@ -460,7 +599,7 @@ export default new Register({
     new Hono().post(
       "/",
       zValidator("json", validator.nodeSearch),
-      context => context.json(store.projectNodeSearch(context.req.valid("json")), 200),
+      context => context.json(todotreeActions.projectNodeSearch(context.req.valid("json")), 200),
     ),
     validator.nodeSearch,
     "在当前项目内按 title、template、status、agent 任意组合查询节点；只返回命中的正式节点。",
@@ -475,7 +614,7 @@ export default new Register({
     "/tree",
     new Hono().get(
       "/",
-      context => context.json(store.tree(), 200),
+      context => context.json(todotreeActions.tree(), 200),
     ),
   )
   .honoAdd(
@@ -488,7 +627,7 @@ export default new Register({
       try {
         await stream.writeSSE({
           event: "tree",
-          data: JSON.stringify(store.tree()),
+          data: JSON.stringify(todotreeActions.tree()),
         });
         await stream.writeSSE({
           event: "ai",
