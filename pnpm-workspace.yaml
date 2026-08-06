@@ -5,5 +5,5 @@ packages:
   - "../extends-antd"
   - "../extends-ssh/ubuntu-lib"
   - "../remote-runtimeobj/webrtcsignaling"
-  - "../create-todo-cli/mcpCreate"
-  - "../create-todo-cli/src"
+  - "../create-todo-cli/create-todo-mcp"
+  - "../create-todo-cli/create-todo-src"

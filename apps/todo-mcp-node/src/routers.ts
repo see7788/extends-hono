@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import tpl from "honoapp/src/tpl/index";
 import Mcp from "mcp-server-lib/index.ts";
-import todocli from "mcpcreate-lib/index"
+import todocli from "create-todo-mcp/index"
 import todotree from "./todotree/index.ts";
 
 const mcp = new Mcp()

@@ -25,20 +25,20 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  ../create-todo-cli/mcpCreate:
+  ../create-todo-cli/create-todo-mcp:
     devDependencies:
       '@types/node':
         specifier: 20.17.17
         version: 20.17.17
+      create-todo-src:
+        specifier: workspace:*
+        version: link:../create-todo-src
       hono:
         specifier: 4.12.30
         version: 4.12.30
       mcp-server-lib:
         specifier: workspace:*
         version: link:../../extends-hono/libs/mcp-server-lib
-      todocli-src-lib:
-        specifier: workspace:*
-        version: link:../src
       typescript:
         specifier: 5.8.3
         version: 5.8.3
@@ -46,7 +46,7 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
-  ../create-todo-cli/src:
+  ../create-todo-cli/create-todo-src:
     devDependencies:
       '@types/mustache':
         specifier: ^4.2.6
@@ -229,6 +229,12 @@ importers:
       better-sqlite3:
         specifier: ^13.0.2
         version: 13.0.2
+      create-todo-mcp:
+        specifier: workspace:*
+        version: link:../../../create-todo-cli/create-todo-mcp
+      create-todo-src:
+        specifier: workspace:*
+        version: link:../../../create-todo-cli/create-todo-src
       esbuild:
         specifier: ^0.28.1
         version: 0.28.1
@@ -238,18 +244,12 @@ importers:
       mcp-server-lib:
         specifier: workspace:*
         version: link:../../libs/mcp-server-lib
-      mcpcreate-lib:
-        specifier: workspace:*
-        version: link:../../../create-todo-cli/mcpCreate
       mustache:
         specifier: ^4.2.0
         version: 4.2.0
       prompts:
         specifier: ^2.4.2
         version: 2.4.2
-      todocli-src-lib:
-        specifier: workspace:*
-        version: link:../../../create-todo-cli/src
       tsx:
         specifier: ^4.21.0
         version: 4.22.4
@@ -264,7 +264,7 @@ importers:
         version: 8.1.0(@types/node@26.1.2)(esbuild@0.28.1)(tsx@4.22.4)
       vite-config-lib:
         specifier: workspace:*
-        version: link:../../libs/vite.config
+        version: link:../../libs/vite-config-lib
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -374,7 +374,7 @@ importers:
         specifier: ^8.0.11
         version: 8.1.0(@types/node@26.1.2)(esbuild@0.28.1)(tsx@4.22.4)
 
-  libs/vite.config:
+  libs/vite-config-lib:
     dependencies:
       '@hono/vite-dev-server':
         specifier: 0.26.1
@@ -385,7 +385,7 @@ importers:
         version: 1.19.14(hono@4.12.30)
       '@types/node':
         specifier: ^26.0.1
-        version: 26.0.1
+        version: 26.1.2
       hono:
         specifier: 4.12.30
         version: 4.12.30
@@ -397,7 +397,7 @@ importers:
         version: 5.9.3
       vite:
         specifier: ^8.0.11
-        version: 8.1.0(@types/node@26.0.1)(esbuild@0.28.1)(tsx@4.22.4)
+        version: 8.1.0(@types/node@26.1.2)(esbuild@0.28.1)(tsx@4.22.4)
 
   libs/windows-named-pipe:
     dependencies:

@@ -5,7 +5,7 @@
 ## 使用接口
 
 ```text
-vite.config/
+vite-config-lib/
 ├── plugin.ts                            # Vite 配置使用
 │   └── default(
 │         options: {
