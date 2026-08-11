@@ -1,66 +1,55 @@
 # vite-config-lib
 
-用一份 Vite 配置运行 Hono 和多个 React 项目。开发与生产都只使用 `mainPort`；`otherPort` 仅由插件在开发时内部使用。
+使用一份 Vite 配置运行一个 Hono 服务端和一个或多个 React 渲染项目。开发和生产使用同一个公开端口；开发期 Hono 由 `@hono/vite-dev-server` 接入 Vite。
 
-## 使用接口
+## 固定入口
 
 ```text
 vite-config-lib/
-├── plugin.ts                            # Vite 配置使用
-│   └── default(
-│         options: {
-│           honoEntry: string;                 # cwd 相对路径
-│           honoHost: string;
-│           honoPort: [
-│             mainPort: number,                # 页面和接口统一使用；开发由 Vite 监听，生产由 Hono 监听
-│             otherPort: number,               # 仅供开发时插件内部运行 Hono
-│           ];
-│         },
-│         ...reactPkg: [
-│           path: string,                      # cwd 相对路径；package.name 作为访问路径和 dist 目录名
-│           define?: Record<string, unknown>,  # 只在当前 React 项目中生效
-│         ][]
-│       ): Plugin                              # 固定使用两个端口，任一被占用即停止；重载或退出时回收内部 Hono
-└── hono.ts                              # Hono 项目使用
-    ├── honoServer(hono: Hono): ReturnType<typeof serve> # 使用插件生产的端口启动 Hono
-    └── honoUrl(name: package.name): string    # 返回 mainPort/package.name/ 完整地址
+├─ plugin2.ts  # Vite 配置消费；创建开发服务和全部构建目标
+├─ hono.ts     # Hono 运行入口消费；启动生产服务并生成页面 URL
+└─ convention.ts # vite-config-mcpserver 消费；读取本包规范原文
 ```
 
 ## Vite 配置
 
 ```ts
-// vite.config.ts
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import honoReact from "vite-config-lib/plugin";
+import honoReact2 from "vite-config-lib/plugin2";
 
 export default defineConfig({
   plugins: [
     react(),
-    honoReact(
-      {
-        honoEntry: "src/index.ts",
-        honoHost: "127.0.0.1",
-        honoPort: [3005, 3099],
+    ...honoReact2({
+      hono: {
+        external: [],
+        path: "./libs/backend/routers.ts",
+        port: 3000,
+        define: {},
       },
-      [
-        "../reactapp",
-        {
-          __WEB_NAME__: JSON.stringify("reactapp"),
-          __API_PATH__: JSON.stringify("/reactapp/api"),
-        },
+      renderer: [
+        {},
+        "./libs/frontend/index.tsx",
+        "./libs/admin/index.tsx",
       ],
-      [
-        "../../web/adminapp",
-        {
-          __WEB_NAME__: JSON.stringify("adminapp"),
-          __API_PATH__: JSON.stringify("/adminapp/api"),
-        },
-      ],
-    ),
+    }),
   ],
 });
 ```
+
+配置契约：
+
+- `hono.path` 必须是以 `.` 开始的当前工作目录相对路径。
+- `hono.port` 是开发与生产共同使用的唯一公开端口，必须是 `1..65535` 的整数。
+- `hono.define` 只注入 Hono 项目。
+- `hono.external` 只放必须由 Node 在运行时加载的原生或 CommonJS 依赖；运行应用必须直接声明这些依赖。
+- `renderer[0]` 是所有 React 项目共享的 `define`。
+- `renderer[1...]` 必须是以 `.` 开始、以 `/index.tsx` 结尾的入口路径。
+- 每个 React 入口所在目录必须具有唯一的 `package.json#name`；该名称同时作为 URL 路径和 `dist` 子目录。
+- 插件返回 `Plugin[]`，必须在 Vite `plugins` 中展开。
+- React 项目不得提供 `index.html`；插件在开发和构建期间生成最小 HTML。
+- 不在项目中手工拼接开发端口、生产端口、页面路径或构建输出路径。
 
 ## Hono 入口
 
@@ -71,11 +60,27 @@ import { honoServer } from "vite-config-lib/hono";
 honoServer(app);
 ```
 
-## 取得页面地址
+生产环境由 `honoServer` 使用插件注入的主机、端口和 React 项目列表提供 Hono API、静态资源及 SPA 回退。
+
+## 页面地址
 
 ```ts
 import { honoUrl } from "vite-config-lib/hono";
 
-const reactappUrl = honoUrl("reactapp");
-// http://127.0.0.1:3005/reactapp/
+const frontendUrl = honoUrl("frontend");
 ```
+
+`honoUrl` 的参数必须等于目标 React 项目的 `package.json#name`，禁止调用方重新拼接 origin、端口或路径。
+
+## MCP
+
+配套包 `vite-config-mcpserver` 默认导出命名空间 `vite_config` 的静态 Register：
+
+```text
+vite_config
+├─ honoReact2
+├─ honoServer
+└─ honoUrl
+```
+
+三个成员都是 AI 可自主调用的只读 Tool：`honoReact2` 只返回插件安装与配置步骤，`honoServer`、`honoUrl` 各自返回同名运行时黑盒契约；双方通过 `pairedTools` 互相指向。统一输入为 `projectPaths: string[]` 与 `task: create | modify | review`。

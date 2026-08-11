@@ -1,12 +1,10 @@
 import { Hono } from "hono";
 import tpl from "honoapp/src/tpl/index";
 import Mcp from "mcp-server-lib/index.ts";
-import todocli from "create-todo-mcp/index"
 import todotree from "./todotree/index.ts";
 
 const mcp = new Mcp()
   .register(tpl)
-  .register(todocli)
   .register(todotree)
 
 const router = new Hono()

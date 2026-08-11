@@ -2,17 +2,13 @@
   "name": "extends-hono",
   "version": "0.1.0",
   "type": "module",
+  "pnpm": {
+    "overrides": {
+      "vite@8.1.0>@types/node": "26.1.2"
+    }
+  },
   "exports": {
     "./*": "./*.ts"
-  },
-  "dependencies": {
-    "@hono/node-server": "^1.19.11",
-    "hono": "^4.12.18",
-    "vite": "^8.0.11"
-  },
-  "devDependencies": {
-    "@types/node": "^26.0.1",
-    "typescript": "^5.9.3"
   },
   "author": "see7788",
   "license": "MIT",
