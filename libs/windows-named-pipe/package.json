@@ -15,7 +15,7 @@
   "dependencies": {
     "@hono/node-server": "^2.0.12",
     "ubuntu-lib": "workspace:*",
-    "extends-zustand": "workspace:*",
+    "zustand-lib": "workspace:*",
     "hono": "^4.12.33",
     "immer": "10.2.0",
     "zod": "^4.4.3",
@@ -25,7 +25,7 @@
     "ubuntu-lib": {
       "injected": true
     },
-    "extends-zustand": {
+    "zustand-lib": {
       "injected": true
     }
   },

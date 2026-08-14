@@ -1,4 +1,4 @@
-import type { ImmerStateCreator } from "extends-zustand/immerStateCreator";
+import type { ImmerStateCreator } from "zustand-lib/immerStateCreator";
 import { hc } from "hono/client";
 import type { TodoMcpApi } from "todo-mcp-node/src/routers.ts";
 import type { AgentRuntime } from "mcp-server-lib/public.ts";

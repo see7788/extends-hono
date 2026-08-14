@@ -1,9 +1,5 @@
 packages:
   - "apps/*"
   - "libs/*"
-  - "../extends-zustand"
+  - "../extends-zustand/libs/zustand-lib"
   - "../extends-antd"
-  - "../extends-ssh/ubuntu-lib"
-  - "../remote-runtimeobj/webrtcsignaling"
-  - "../packagecli/packagecli-lib"
-  - "../extends-mcp/libs/mcpserver"

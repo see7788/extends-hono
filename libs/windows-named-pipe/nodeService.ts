@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { createConnection } from "node:net";
-import type { ImmerStateCreator } from "extends-zustand/immerStateCreator";
+import type { ImmerStateCreator } from "zustand-lib/immerStateCreator";
 import { z } from "zod";
 
 const pipeRoot = "\\\\.\\pipe\\";

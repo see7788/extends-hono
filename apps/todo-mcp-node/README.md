@@ -23,5 +23,5 @@ pnpm --filter todo-mcp-node exec todo-mcp restart
 - MCP 服务：<http://127.0.0.1:3005/todo-mcp>
 - TodoTree 页面：<http://127.0.0.1:3005/todotree/>
 
-服务使用本地 SQLite 持久化 TodoTree 数据，并通过 `extends-zustand/cwdPersist` 写入：
+服务使用本地 SQLite 持久化 TodoTree 数据，并通过 `zustand-lib/cwdPersist` 写入：
 `D:\ssdpro\.zustand\todo-mcp-store.json`。
