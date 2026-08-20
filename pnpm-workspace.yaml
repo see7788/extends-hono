@@ -2,4 +2,7 @@ packages:
   - "apps/*"
   - "libs/*"
   - "../extends-zustand/libs/zustand-lib"
+  - "../extends-mcp/libs/mcpserver"
+  - "../extends-ssh/ubuntu-lib"
+  - "../packagecli/packagecli-lib"
   - "../extends-antd"
