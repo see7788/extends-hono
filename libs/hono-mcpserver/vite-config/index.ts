@@ -13,7 +13,7 @@ import {
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
 const mutationAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true } as const;
 export default mcpserver
-  .register({ sliceName: "vite-config" })
+  .register.slice({ registerName: "vite-config" })
   .resource.register("get", "/readme", readmeUri, {
     title: "vite-config-lib Hono README",
     description: "Authoritative black-box integration contract for vite-config-lib in Hono Vite projects",
