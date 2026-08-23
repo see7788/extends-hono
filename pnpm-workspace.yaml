@@ -3,6 +3,7 @@ packages:
   - "libs/*"
   - "../extends-zustand/libs/zustand-lib"
   - "../extends-mcp/libs/mcpserver"
+  - "../extends-mcp/libs/user-response-templates-mcpserver"
   - "../extends-ssh/ubuntu-lib"
   - "../packagecli/packagecli-lib"
   - "../extends-antd"
