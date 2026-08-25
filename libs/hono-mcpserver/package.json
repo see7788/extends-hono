@@ -14,22 +14,14 @@
   },
   "peerDependencies": {
     "hono": "4.12.30",
-    "immer": "10.2.0",
     "mcpserver": "workspace:*",
-    "vite-config-lib": "workspace:*",
-    "zustand": "5.0.13",
-    "zustand-lib": "workspace:*",
-    "zod": "^4.4.3"
+    "vite-config-lib": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
     "hono": "4.12.30",
-    "immer": "10.2.0",
     "mcpserver": "workspace:*",
     "typescript": "^5.9.3",
-    "vite-config-lib": "workspace:*",
-    "zustand": "5.0.13",
-    "zustand-lib": "workspace:*",
-    "zod": "^4.4.3"
+    "vite-config-lib": "workspace:*"
   }
 }

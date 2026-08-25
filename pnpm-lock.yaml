@@ -37,6 +37,9 @@ importers:
       '@hono/zod-validator':
         specifier: ^0.9.0
         version: 0.9.0(hono@4.12.30)(zod@4.4.3)
+      '@scalar/hono-api-reference':
+        specifier: ^0.11.16
+        version: 0.11.16(hono@4.12.30)
       better-sqlite3:
         specifier: ^13.0.2
         version: 13.0.2
@@ -75,6 +78,25 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
+  ../extends-mcp/libs/user-response-templates-mcpserver:
+    dependencies:
+      mcpserver:
+        specifier: workspace:*
+        version: link:../mcpserver
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: 20.17.17
+        version: 20.17.17
+      hono:
+        specifier: 4.12.30
+        version: 4.12.30
+      typescript:
+        specifier: 5.8.3
+        version: 5.8.3
+
   ../extends-ssh/ubuntu-lib:
     dependencies:
       es-module-lexer:
@@ -86,6 +108,9 @@ importers:
       node-ssh:
         specifier: ^13.2.1
         version: 13.2.1
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
       zustand:
         specifier: 5.0.13
         version: 5.0.13(@types/react@19.2.18)(immer@10.2.0)(react@19.2.8)
@@ -150,6 +175,9 @@ importers:
       validate-npm-package-name:
         specifier: 5.0.1
         version: 5.0.1
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   apps/remotedemo:
     dependencies:
@@ -189,7 +217,29 @@ importers:
         specifier: ^8.0.11
         version: 8.1.0(@types/node@26.1.2)(esbuild@0.28.1)(tsx@4.22.4)
 
+  libs/hono-mcpserver:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      hono:
+        specifier: 4.12.30
+        version: 4.12.30
+      mcpserver:
+        specifier: workspace:*
+        version: link:../../../extends-mcp/libs/mcpserver
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite-config-lib:
+        specifier: workspace:*
+        version: link:../vite-config-lib
+
   libs/vite-config-lib:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@hono/node-server':
         specifier: ^1.19.11
@@ -1419,6 +1469,32 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@scalar/client-side-rendering@0.3.9':
+    resolution: {integrity: sha512-Gg+VLhreiWHmHN0i9uatEoIxzsr0FaJoq0x+PkypmFgZFniD477DVCAnmWqx+KXlpFg0VtDanDHARIJXZ1fIeQ==}
+    engines: {node: '>=22'}
+
+  '@scalar/helpers@0.11.1':
+    resolution: {integrity: sha512-Knwbe0IYqFk0PPDoOKLasqglBHfyf9/zwWWqFsSNi/AtdjM29wSZXN6p8DFid6iB5B9epYH9YiSgJ6tpD00TEw==}
+    engines: {node: '>=22'}
+
+  '@scalar/hono-api-reference@0.11.16':
+    resolution: {integrity: sha512-y0duqBJF2yQhkkk7xMFyWSx06+Y0ImOLtVKDH3d+jgTaVGbAtyxwkuKmj+Dd7eq3t9P7XnZx4YgBJ0S9WzsIQQ==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      hono: ^4.12.5
+
+  '@scalar/schemas@0.8.3':
+    resolution: {integrity: sha512-cTjgiJxXFXMqXlFZafXOyTOKm1lUfbDTbe9La+dPcQPe6q0zXAiVtys0IKILQWNrjXPidY0eaB9Va/rd16bfxw==}
+    engines: {node: '>=22'}
+
+  '@scalar/types@0.18.2':
+    resolution: {integrity: sha512-q7fGMn0IygdLbYk9W4quM0w1caHDfL9FIxsYXNsgIep6uuO0T/t4BOStyf0qyzQ3pjt0B7rWFxO//EM9I7F/Tw==}
+    engines: {node: '>=22'}
+
+  '@scalar/validation@0.6.3':
+    resolution: {integrity: sha512-j3s9XPv8Wo1EG5/naBi4XGF0uXYQ2A3QZNI0NKWgCMxRHVrDJGlZEYymcHDHY7fquRm73P8U3c8xqJqB5yad6w==}
+    engines: {node: '>=20'}
+
   '@tybys/wasm-util@0.10.3':
     resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
 
@@ -1451,6 +1527,9 @@ packages:
 
   '@types/node@20.19.43':
     resolution: {integrity: sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA==}
+
+  '@types/node@22.20.1':
+    resolution: {integrity: sha512-EANqOCF9QFyra+4pfxUcX9STKJpCLjMbObVzljIJomAWSnuSIEAvyzEU53GaajbXJEgdh0iEcPL+DGvpUd4k1Q==}
 
   '@types/node@26.1.2':
     resolution: {integrity: sha512-Vu4a5UFA9rIIFJ7rB/Vaafh9lrCQszopTCx6KjFboXTGQbPNasehVR5TEiithSDGyd1DEiUByggTZsg8jukeIg==}
@@ -1733,6 +1812,11 @@ packages:
   nanoid@3.3.15:
     resolution: {integrity: sha512-y7Wygv/7mEOvxTuEQDB8StXdMRBWf1kR/tlhAzBRUFkB2jfcLOAxO/SHmOO2zgz1pVgK29/kyupn059/bCHdjA==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
+    hasBin: true
+
+  nanoid@5.1.16:
+    resolution: {integrity: sha512-kVrnsrJqMR8+oLJnGEmSWw9BivK5mt7H3FZatVRjrc5wGqFYuBxX1yG7+A7Gi5AefkX6t/oCkizcQgpu0cY1dQ==}
+    engines: {node: ^18 || >=20}
     hasBin: true
 
   node-addon-api@8.9.1:
@@ -2975,6 +3059,33 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.62.4':
     optional: true
 
+  '@scalar/client-side-rendering@0.3.9':
+    dependencies:
+      '@scalar/schemas': 0.8.3
+      '@scalar/types': 0.18.2
+      '@scalar/validation': 0.6.3
+
+  '@scalar/helpers@0.11.1': {}
+
+  '@scalar/hono-api-reference@0.11.16(hono@4.12.30)':
+    dependencies:
+      '@scalar/client-side-rendering': 0.3.9
+      hono: 4.12.30
+
+  '@scalar/schemas@0.8.3':
+    dependencies:
+      '@scalar/helpers': 0.11.1
+      '@scalar/validation': 0.6.3
+
+  '@scalar/types@0.18.2':
+    dependencies:
+      '@scalar/helpers': 0.11.1
+      nanoid: 5.1.16
+      type-fest: 5.8.0
+      zod: 4.4.3
+
+  '@scalar/validation@0.6.3': {}
+
   '@tybys/wasm-util@0.10.3':
     dependencies:
       tslib: 2.8.1
@@ -3018,6 +3129,10 @@ snapshots:
       undici-types: 6.21.0
 
   '@types/node@20.19.43':
+    dependencies:
+      undici-types: 6.21.0
+
+  '@types/node@22.20.1':
     dependencies:
       undici-types: 6.21.0
 
@@ -3358,6 +3473,8 @@ snapshots:
 
   nanoid@3.3.15: {}
 
+  nanoid@5.1.16: {}
+
   node-addon-api@8.9.1: {}
 
   node-releases@2.0.53: {}
@@ -3544,6 +3661,7 @@ snapshots:
       immer: 10.2.0
       node-ssh: 13.2.1
       vite: 8.1.0(@types/node@26.1.2)(esbuild@0.28.1)(tsx@4.22.4)
+      zod: 4.4.3
       zustand: 5.0.13(@types/react@19.2.18)(immer@10.2.0)(react@19.2.8)
       zustand-lib: link:../extends-zustand/libs/zustand-lib
     transitivePeerDependencies:

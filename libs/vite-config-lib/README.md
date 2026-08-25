@@ -69,7 +69,7 @@ export default server;
 
 Hono 服务器由项目入口调用 `honoServer` 创建并默认导出；插件只负责在开发期加载项目入口、在构建期把它作为 Node 入口。开发时 Hono 监听隐藏端口，Vite 监听业务端口并代理业务请求；生产入口则由 Hono 直接监听业务端口并提供 API、静态资源及 SPA 回退。
 
-`honoServer(app: Hono)` 返回真实 Node Server，项目可以在默认导出前为它注入 WebSocket 或其他 Node 服务能力。开发 HMR 会关闭旧实例并重新执行完整项目入口；生产请求先经过 Hono 路由，仅在响应为 404 时继续处理 React 静态资源与 SPA 回退。调用方不得再创建第二套监听。
+`honoServer(app: Hono)` 返回真实 Node Server，项目可以在默认导出前为它注入 WebSocket 或其他 Node 服务能力。开发期始终保留同一个 Node Server；Vite SSR HMR 只重新执行受影响的模块并替换 Hono 请求应用，不关闭监听端口或既有连接。生产请求先经过 Hono 路由，仅在响应为 404 时继续处理 React 静态资源与 SPA 回退。调用方不得再创建第二套监听。
 
 ## 页面地址
 

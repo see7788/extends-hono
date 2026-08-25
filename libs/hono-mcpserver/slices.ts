@@ -1,8 +1,1 @@
-import mcpserver from "mcpserver";
-import viteConfig from "./vite-config/index";
-
-export default mcpserver.importer.package({
-  packageName: "hono-mcpserver",
-  description: "为 Hono Vite 项目提供依赖、导入与 Vite 配置工具。",
-  registers: [viteConfig],
-});
+export { default as viteConfig } from "./vite-config/index.ts";

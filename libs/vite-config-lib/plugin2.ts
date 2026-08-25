@@ -9,6 +9,8 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
+  createRunnableDevEnvironment,
+  isRunnableDevEnvironment,
   normalizePath,
   type Plugin,
   type PluginOption,
@@ -176,9 +178,47 @@ export default function honoReact2({
   const honoDefine = defineValues(honoDefineInput);
   const rendererDefine = defineValues(rendererDefineInput);
   const honoEntry = normalizePath(hono);
+  const runtimeEntry = "virtual:honoreact2:ssr-runtime";
+  const runtimeModule = "\0honoreact2:ssr-runtime";
+  const runtimeSource = `
+import projectServer from ${JSON.stringify(honoEntry)};
 
-  let runtimeReload: (() => Promise<void>) | undefined;
-  let runtimeReloading: Promise<void> | undefined;
+const serverRead = (server) => {
+  if (
+    !server
+    || typeof server.close !== "function"
+    || typeof server.closeAllConnections !== "function"
+    || typeof server.listening !== "boolean"
+  ) {
+    throw new Error("The Hono project entry must default export the Node Server");
+  }
+  return server;
+};
+
+const server = serverRead(projectServer);
+if (import.meta.hot) {
+  import.meta.hot.accept(${JSON.stringify(honoEntry)}, module => {
+    // A failed transform is already reported by Vite and supplies no module.
+    // Keep the last valid application serving instead of turning a source
+    // error into a Node process failure.
+    if (!module) return;
+    let nextServer;
+    try {
+      nextServer = serverRead(module.default);
+    } catch (error) {
+      console.error(error);
+      return;
+    }
+    if (nextServer !== server) {
+      console.error(new Error(
+        "honoServer must preserve the Node Server during a hot update",
+      ));
+    }
+  });
+}
+
+export default server;
+`;
 
   const plugin: Plugin = {
     name: "honoreact2",
@@ -209,6 +249,11 @@ export default function honoReact2({
             client: { consumer: "client", define: rendererDefine },
             ssr: {
               consumer: "server",
+              dev: {
+                createEnvironment: (name, config) => (
+                  createRunnableDevEnvironment(name, config)
+                ),
+              },
               define: {
                 ...honoDefine,
                 "process.env.HONOREACT_HOST": JSON.stringify(host),
@@ -277,15 +322,24 @@ export default function honoReact2({
         },
       };
     },
-    async hotUpdate({ modules }) {
-      if (this.environment.name !== "ssr" || modules.length === 0 || !runtimeReload) return;
-      await runtimeReload();
-      return [];
+    resolveId(id) {
+      if (id === runtimeEntry) return runtimeModule;
+    },
+    load(id) {
+      if (id === runtimeModule) return runtimeSource;
+    },
+    hotUpdate(options) {
+      if (this.environment.name !== "ssr" || options.modules.length === 0) return;
+      const honoModule = this.environment.moduleGraph.getModuleById(honoEntry);
+      if (!honoModule) return;
+      // Partial invalidation can replay side-effect registrations against a stale generation.
+      // Rebuild the SSR graph while the runtime accept boundary preserves the Node listener.
+      this.environment.moduleGraph.invalidateAll();
+      return [honoModule];
     },
     async configureServer(server) {
       server.middlewares.use(async (request, response, next) => {
         try {
-          await runtimeReloading;
           if (request.method !== "GET" || !request.url) return next();
           const url = new URL(request.url, origin);
           const project = projects.find(({ name }) => (
@@ -311,16 +365,9 @@ export default function honoReact2({
         }
       });
       const environment = server.environments.ssr;
-      const runner = Reflect.get(environment, "runner") as {
-        import: (id: string) => Promise<unknown>;
-        clearCache: () => void;
-      } | undefined;
-      const moduleImport = runner
-        ? runner.import.bind(runner) as (id: string) => Promise<Record<string, unknown>>
-        : server.ssrLoadModule.bind(server) as (id: string) => Promise<Record<string, unknown>>;
-      const moduleClearCache = runner
-        ? runner.clearCache.bind(runner)
-        : () => undefined;
+      if (!isRunnableDevEnvironment(environment)) {
+        throw new Error("honoreact2 requires a runnable Vite SSR environment");
+      }
       type ProjectServer = {
         close(callback?: (error?: Error) => void): void;
         closeAllConnections(): void;
@@ -338,28 +385,9 @@ export default function honoReact2({
         }
         return projectServer as ProjectServer;
       };
-      const serverClose = (projectServer: ProjectServer): Promise<void> => {
-        if (!projectServer.listening) return Promise.resolve();
-        return new Promise((resolveClose, rejectClose) => {
-          projectServer.close(error => error ? rejectClose(error) : resolveClose());
-          projectServer.closeAllConnections();
-        });
-      };
-      let projectServer = serverRead(await moduleImport(honoEntry));
-      let reloadQueue = Promise.resolve();
-      runtimeReload = () => {
-        const reload = reloadQueue.catch(() => undefined).then(async () => {
-          await serverClose(projectServer);
-          moduleClearCache();
-          projectServer = serverRead(await moduleImport(honoEntry));
-        });
-        reloadQueue = reload;
-        runtimeReloading = reload;
-        void reload.finally(() => {
-          if (runtimeReloading === reload) runtimeReloading = undefined;
-        }).catch(() => undefined);
-        return reload;
-      };
+      const projectServer = serverRead(
+        await environment.runner.import<Record<string, unknown>>(runtimeEntry),
+      );
       server.httpServer?.once("close", () => projectServer.close());
     },
   };
