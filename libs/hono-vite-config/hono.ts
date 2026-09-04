@@ -29,7 +29,7 @@ type HonoRuntime = {
   readonly server: ServerType;
 };
 
-const runtimeSymbol = Symbol.for("vite-config-lib.hono.runtimes");
+const runtimeSymbol = Symbol.for("hono-vite-config.hono.runtimes");
 const runtimeGlobal = globalThis as typeof globalThis & {
   [runtimeSymbol]?: Map<string, HonoRuntime>;
 };

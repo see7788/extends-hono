@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "hono": "4.12.30",
-    "vite-config-lib": "workspace:*"
+    "hono-vite-config": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

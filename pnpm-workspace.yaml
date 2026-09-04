@@ -2,6 +2,7 @@ packages:
   - "apps/*"
   - "libs/*"
   - "../extends-zustand/libs/zustand-lib"
+  - "../extends-vite/libs/vite-src"
   - "../extends-mcp/libs/mcpserver"
   - "../extends-mcp/libs/user-response-templates-mcpserver"
   - "../extends-ssh/ubuntu-lib"

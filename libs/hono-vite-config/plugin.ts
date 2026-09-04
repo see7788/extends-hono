@@ -7,7 +7,12 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+import {
+  type JsonValue,
+  viteHtmlEntryUrl,
+  viteHtmlMiddleware,
+} from "vite-src/public";
 import {
   createRunnableDevEnvironment,
   isRunnableDevEnvironment,
@@ -16,14 +21,6 @@ import {
   type PluginOption,
   type UserConfig,
 } from "vite";
-
-type Json =
-  | null
-  | boolean
-  | number
-  | string
-  | readonly Json[]
-  | { readonly [key: string]: Json };
 
 export type path_t = `.${string}/index.${"ts" | "tsx"}`;
 
@@ -37,10 +34,10 @@ type Options = {
     external?: readonly string[];
     path: path_t;
     port: ports_t;
-    define?: Readonly<Record<string, Json>>;
+    define?: Readonly<Record<string, JsonValue>>;
   };
   renderer: {
-    define?: Readonly<Record<string, Json>>;
+    define?: Readonly<Record<string, JsonValue>>;
     paths: readonly [path_t, ...path_t[]];
   };
 };
@@ -65,7 +62,7 @@ const packageName = (root: string): string => {
 };
 
 const defineValues = (
-  define?: Readonly<Record<string, Json>>,
+  define?: Readonly<Record<string, JsonValue>>,
 ): Record<string, string> => Object.fromEntries(
   Object.entries(define ?? {}).map(([name, value]) => {
     const serialized = typeof value === "string" ? value : JSON.stringify(value);
@@ -74,11 +71,8 @@ const defineValues = (
   }),
 );
 
-const htmlSource = (project: ReactProject, development: boolean): string => {
-  const relativeEntry = normalizePath(relative(dirname(project.html), project.entry));
-  const entry = development
-    ? `/@fs/${normalizePath(project.entry)}`
-    : relativeEntry.startsWith(".") ? relativeEntry : `./${relativeEntry}`;
+const htmlSource = (project: ReactProject, command: "serve" | "build"): string => {
+  const entry = viteHtmlEntryUrl(project.html, project.entry, command);
   return `<!doctype html>
 <html lang="zh-CN">
   <head>
@@ -229,12 +223,12 @@ export default server;
         cwd,
         "node_modules",
         ".vite",
-        "vite-config-lib",
+        "hono-vite-config",
         development ? "development" : "production",
       );
       const { hasPublic, publicRoot } = projectsPrepare(temporaryRoot);
       for (const project of projects) {
-        writeFileSync(project.html, htmlSource(project, development), "utf8");
+        writeFileSync(project.html, htmlSource(project, development ? "serve" : "build"), "utf8");
       }
       const common: UserConfig = {
         base: "/",
@@ -264,7 +258,7 @@ export default server;
               },
               resolve: {
                 external: [...honoExternal],
-                noExternal: ["vite-config-lib"],
+                noExternal: ["hono-vite-config"],
               },
             },
           },
@@ -307,7 +301,7 @@ export default server;
             },
             resolve: {
               external: [...honoExternal],
-              noExternal: ["vite-config-lib"],
+              noExternal: ["hono-vite-config"],
             },
             build: {
               emptyOutDir: true,
@@ -338,32 +332,7 @@ export default server;
       return [honoModule];
     },
     async configureServer(server) {
-      server.middlewares.use(async (request, response, next) => {
-        try {
-          if (request.method !== "GET" || !request.url) return next();
-          const url = new URL(request.url, origin);
-          const project = projects.find(({ name }) => (
-            url.pathname === `/${name}` || url.pathname.startsWith(`/${name}/`)
-          ));
-          if (!project) return next();
-          if (url.pathname === `/${project.name}`) {
-            response.statusCode = 307;
-            response.setHeader("Location", `/${project.name}/${url.search}`);
-            response.end();
-            return;
-          }
-          if (!request.headers.accept?.includes("text/html")) return next();
-          const html = await server.transformIndexHtml(
-            url.pathname,
-            readFileSync(project.html, "utf8"),
-          );
-          response.statusCode = 200;
-          response.setHeader("Content-Type", "text/html; charset=utf-8");
-          response.end(html);
-        } catch (error) {
-          next(error);
-        }
-      });
+      viteHtmlMiddleware(server, projects, origin);
       const environment = server.environments.ssr;
       if (!isRunnableDevEnvironment(environment)) {
         throw new Error("honoreact2 requires a runnable Vite SSR environment");

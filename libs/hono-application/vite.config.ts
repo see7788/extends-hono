@@ -1,7 +1,7 @@
 import react from "@vitejs/plugin-react";
 import ubuntu from "ubuntu-lib/index.ts";
 import { defineConfig } from "vite";
-import honoReact from "vite-config-lib/plugin2";
+import honoReact from "hono-vite-config/plugin";
 
 export default defineConfig({
   plugins: [

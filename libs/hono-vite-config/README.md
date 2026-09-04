@@ -1,14 +1,14 @@
-# vite-config-lib
+# hono-vite-config
 
 使用一份 Vite 配置运行一个 Hono 服务端和一个或多个 React 渲染项目。业务端口在开发和生产中始终不变；开发期由 Vite 提供 React 与 HMR，并把业务请求代理到隐藏的 Hono 端口。插件不依赖 Hono 的 Vite 插件。
 
-接入时使用目标项目现有的包管理器声明 `vite-config-lib` 和实际用到的 peer dependencies；不要假定目标项目使用 pnpm。以下公开入口是完整黑盒契约，调用方不复制其内部实现。
+接入时使用目标项目现有的包管理器声明 `hono-vite-config` 和实际用到的 peer dependencies；不要假定目标项目使用 pnpm。以下公开入口是完整黑盒契约，调用方不复制其内部实现。
 
 ## 固定入口
 
 ```text
-vite-config-lib/
-├─ plugin2.ts  # Vite 配置消费；创建开发服务和全部构建目标
+hono-vite-config/
+├─ plugin.ts   # Vite 配置消费；创建开发服务和全部构建目标
 ├─ hono.ts     # 插件运行时黑盒；启动 Hono、热替换 app 并生成页面 URL
 ```
 
@@ -17,7 +17,7 @@ vite-config-lib/
 ```ts
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import honoReact2 from "vite-config-lib/plugin2";
+import honoReact2 from "hono-vite-config/plugin";
 
 export default defineConfig({
   plugins: [
@@ -58,7 +58,7 @@ export default defineConfig({
 ## Hono 入口
 
 ```ts
-import { honoServer } from "vite-config-lib/hono";
+import { honoServer } from "hono-vite-config/hono";
 import routers from "./routers";
 
 const server = honoServer(routers);
@@ -74,9 +74,13 @@ Hono 服务器由项目入口调用 `honoServer` 创建并默认导出；插件�
 ## 页面地址
 
 ```ts
-import { honoUrl } from "vite-config-lib/hono";
+import { honoUrl } from "hono-vite-config/hono";
 
 const frontendUrl = honoUrl("frontend");
 ```
 
 `honoUrl` 的参数必须等于目标 React 项目的 `package.json#name`，禁止调用方重新拼接 origin、端口或路径。
+
+## MCP 配套入口
+
+需要把上述黑盒契约发布为 MCP 房间时，导入一次 `hono-vite-config/slices` 即可；MCP 切片与本库共用验证器、类型和主 Store，不再维护独立的 MCP 兄弟包。

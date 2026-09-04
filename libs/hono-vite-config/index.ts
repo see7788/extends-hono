@@ -2,63 +2,25 @@ import { execFile } from "node:child_process";
 import { readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { z } from "zod";
+import mcpserver from "mcpserver";
+import store from "./store";
+import {
+  dependenciesInstallValidator,
+  honoReact2Validator,
+  honoServerValidator,
+  honoUrlValidator,
+  importsEnsureValidator,
+  packageManifestValidator,
+  projectReadValidator,
+  type DependenciesInstallInput,
+  type HonoReact2Input,
+  type HonoServerInput,
+  type HonoUrlInput,
+  type ImportsEnsureInput,
+  type ProjectReadInput,
+} from "./store";
 
-export const projectReadValidator = z.object({
-  projectPath: z.string().trim().min(1).describe("一个具体 Hono Vite 包的绝对路径"),
-}).strict();
-
-export const dependenciesInstallValidator = projectReadValidator;
-
-export const importsEnsureValidator = z.object({
-  projectPath: z.string().trim().min(1),
-  sourceFilePath: z.string().trim().min(1),
-  role: z.enum(["honoReact2", "honoServer", "honoUrl"]),
-}).strict();
-
-export const honoReact2Validator = z.object({
-  port: z.tuple([
-    z.number().int().min(1).max(65_535),
-    z.number().int().min(1).max(65_535),
-  ]).refine(
-    ([businessPort, developmentHonoPort]) => businessPort !== developmentHonoPort,
-    "businessPort 与 developmentHonoPort 不能相同",
-  ),
-  honoPath: z.string().regex(
-    /^\.\S*\/index\.(?:ts|tsx)$/,
-    "paths 必须是相对的 index.ts 或 index.tsx 文件路径",
-  ),
-  rendererPaths: z.array(z.string().regex(
-    /^\.\S*\/index\.(?:ts|tsx)$/,
-    "paths 必须是相对的 index.ts 或 index.tsx 文件路径",
-  )).min(1),
-  external: z.array(z.string().trim().min(1)).default([]),
-  honoDefine: z.record(z.string(), z.json()).optional(),
-  rendererDefine: z.record(z.string(), z.json()).optional(),
-}).strict();
-
-export const honoServerValidator = z.object({
-  routerIdentifier: z.string().regex(
-    /^[A-Za-z_$][A-Za-z0-9_$]*$/,
-    "identifier 必须是有效的 JavaScript 标识符",
-  ),
-}).strict();
-
-export const honoUrlValidator = z.object({
-  rendererName: z.string().regex(
-    /^[A-Za-z0-9._~-]+$/,
-    "rendererName 必须是单个 URL 路径段",
-  ),
-}).strict();
-
-const packageManifestValidator = z.object({
-  dependencies: z.record(z.string(), z.unknown()).optional(),
-  peerDependencies: z.record(z.string(), z.unknown()).optional(),
-  devDependencies: z.record(z.string(), z.unknown()).optional(),
-  optionalDependencies: z.record(z.string(), z.unknown()).optional(),
-}).passthrough();
-
-const packageName = "vite-config-lib";
+const packageName = "hono-vite-config";
 const dependencyPatch = {
   dependencies: {
     "@hono/node-server": "^1.19.11",
@@ -71,7 +33,7 @@ const dependencyPatch = {
   },
 } as const;
 const importsByRole = {
-  honoReact2: [`import honoReact2 from "${packageName}/plugin2";`],
+  honoReact2: [`import honoReact2 from "${packageName}/plugin";`],
   honoServer: [`import { honoServer } from "${packageName}/hono";`],
   honoUrl: [`import { honoUrl } from "${packageName}/hono";`],
 } as const;
@@ -86,7 +48,7 @@ const requiredProjectFiles = [
   "renderer/routers.tsx",
   "renderer/store.ts",
 ] as const;
-const publicImports = ["vite-config-lib/plugin2", "vite-config-lib/hono"] as const;
+const publicImports = ["hono-vite-config/plugin", "hono-vite-config/hono"] as const;
 const dependencySections = [
   "dependencies",
   "peerDependencies",
@@ -293,7 +255,7 @@ class ViteConfig {
   }
 
   async dependenciesInstall(
-    input: z.infer<typeof dependenciesInstallValidator>,
+    input: DependenciesInstallInput,
   ) {
     try {
       const value = dependenciesInstallValidator.parse(input);
@@ -333,7 +295,7 @@ class ViteConfig {
     }
   }
 
-  async importsEnsure(input: z.infer<typeof importsEnsureValidator>) {
+  async importsEnsure(input: ImportsEnsureInput) {
     try {
       const value = importsEnsureValidator.parse(input);
       const projectPath = await projectResolve(value.projectPath);
@@ -372,7 +334,7 @@ class ViteConfig {
     }
   }
 
-  async projectRead(input: z.infer<typeof projectReadValidator>) {
+  async projectRead(input: ProjectReadInput) {
     const { projectPath } = projectReadValidator.parse(input);
     try {
       if (!isAbsolute(projectPath)) {
@@ -432,13 +394,13 @@ class ViteConfig {
       const dependencySource = dependencySections.find(sectionName =>
         Object.prototype.hasOwnProperty.call(
           packageManifestResult.data[sectionName] ?? {},
-          "vite-config-lib",
+          "hono-vite-config",
         )
       );
       if (dependencySource === undefined) {
         throw new ProjectReadError(
           "DEPENDENCY_REQUIRED",
-          "The concrete package must declare vite-config-lib in dependencies, peerDependencies, devDependencies, or optionalDependencies.",
+          "The concrete package must declare hono-vite-config in dependencies, peerDependencies, devDependencies, or optionalDependencies.",
           packageJsonPath,
         );
       }
@@ -458,9 +420,9 @@ class ViteConfig {
           publicImports,
           instruction: "请先阅读项目约定："
             + conventionPath
-            + "。修改 vite-config-lib 集成前，请读取 "
+            + "。修改 hono-vite-config 集成前，请读取 "
             + readmeUri
-            + " 处的 hono.readme 资源。仅使用公开导入 vite-config-lib/plugin2 和 vite-config-lib/hono。",
+            + " 处的 hono.readme 资源。仅使用公开导入 hono-vite-config/plugin 和 hono-vite-config/hono。",
         },
       };
     } catch (error) {
@@ -489,7 +451,7 @@ class ViteConfig {
     }
   }
 
-  honoReact2(input: z.infer<typeof honoReact2Validator>) {
+  honoReact2(input: HonoReact2Input) {
     const value = honoReact2Validator.parse(input);
     const options = {
       hono: {
@@ -508,7 +470,7 @@ class ViteConfig {
     const call = "honoReact2(" + JSON.stringify(options, null, 2) + ")";
     return {
       packageName,
-      import: `import honoReact2 from "${packageName}/plugin2";`,
+      import: `import honoReact2 from "${packageName}/plugin";`,
       call,
       config: { plugins: [call] },
       options,
@@ -516,7 +478,7 @@ class ViteConfig {
     };
   }
 
-  honoServer(input: z.infer<typeof honoServerValidator>) {
+  honoServer(input: HonoServerInput) {
     const { routerIdentifier } = honoServerValidator.parse(input);
     return {
       packageName,
@@ -527,7 +489,7 @@ class ViteConfig {
     };
   }
 
-  honoUrl(input: z.infer<typeof honoUrlValidator>) {
+  honoUrl(input: HonoUrlInput) {
     const { rendererName } = honoUrlValidator.parse(input);
     return {
       packageName,
@@ -540,3 +502,117 @@ class ViteConfig {
 }
 
 export const viteConfig = new ViteConfig();
+store.setState({
+  viteConfigActions: {
+    readme: uri => viteConfig.readme(uri),
+    dependenciesInstall: input => viteConfig.dependenciesInstall(input),
+    importsEnsure: input => viteConfig.importsEnsure(input),
+    projectRead: input => viteConfig.projectRead(input),
+    honoReact2: input => viteConfig.honoReact2(input),
+    honoServer: input => viteConfig.honoServer(input),
+    honoUrl: input => viteConfig.honoUrl(input),
+  },
+});
+
+const read = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+const localMutate = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+const remoteMutate = { ...localMutate, openWorldHint: true } as const;
+
+export default mcpserver.metas("viteConfig")
+  .resource(
+    "get",
+    "/readme",
+    readmeUri,
+    {
+      title: "Vite 配置说明",
+      description: "读取 Vite 配置工具的使用说明。",
+      mimeType: "text/markdown",
+    },
+    async context =>
+      context.json(await store.getState().viteConfigActions.readme(context.req.query("uri"))),
+  )
+  .tool(
+    "post",
+    "/dependenciesInstall",
+    dependenciesInstallValidator,
+    "安装 Vite 配置所需的项目依赖。",
+    remoteMutate,
+    async context => {
+      const result = await store.getState().viteConfigActions.dependenciesInstall(
+        context.req.valid("json"),
+      );
+      return result.status === 400
+        ? context.json(result.body, 400)
+        : context.json(result.body);
+    },
+  )
+  .tool(
+    "post",
+    "/importsEnsure",
+    importsEnsureValidator,
+    "确保项目包含 Vite 配置所需的导入。",
+    localMutate,
+    async context => {
+      const result = await store.getState().viteConfigActions.importsEnsure(
+        context.req.valid("json"),
+      );
+      return result.status === 400
+        ? context.json(result.body, 400)
+        : context.json(result.body);
+    },
+  )
+  .tool(
+    "post",
+    "/projectRead",
+    projectReadValidator,
+    "读取项目中的 Vite 配置信息。",
+    read,
+    async context => {
+      const result = await store.getState().viteConfigActions.projectRead(
+        context.req.valid("json"),
+      );
+      return result.status === 400
+        ? context.json(result.body, 400)
+        : context.json(result.body);
+    },
+  )
+  .tool(
+    "post",
+    "/honoReact2",
+    honoReact2Validator,
+    "生成 Hono React 2 的 Vite 配置。",
+    read,
+    context => context.json(
+      store.getState().viteConfigActions.honoReact2(context.req.valid("json")),
+    ),
+  )
+  .tool(
+    "post",
+    "/honoServer",
+    honoServerValidator,
+    "生成 Hono 服务端的 Vite 配置。",
+    read,
+    context => context.json(
+      store.getState().viteConfigActions.honoServer(context.req.valid("json")),
+    ),
+  )
+  .tool(
+    "post",
+    "/honoUrl",
+    honoUrlValidator,
+    "生成 Hono 服务地址的 Vite 配置。",
+    read,
+    context => context.json(
+      store.getState().viteConfigActions.honoUrl(context.req.valid("json")),
+    ),
+  );

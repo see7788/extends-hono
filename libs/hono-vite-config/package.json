@@ -1,5 +1,5 @@
 {
-  "name": "vite-config-lib",
+  "name": "hono-vite-config",
   "version": "0.1.0",
   "type": "module",
   "exports": {
@@ -7,21 +7,30 @@
     "./*": "./*.ts"
   },
   "dependencies": {
+    "vite-src": "workspace:*",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
     "@hono/node-server": "^1.19.11",
     "@vitejs/plugin-react": "^5.1.1",
     "hono": "4.12.30",
-    "vite": "^8.0.0"
+    "vite": "^8.0.0",
+    "immer": "10.2.0",
+    "mcpserver": "workspace:*",
+    "zustand": "5.0.13",
+    "zustand-lib": "workspace:*"
   },
   "devDependencies": {
     "@hono/node-server": "^1.19.11",
     "@types/node": "^26.0.1",
     "@vitejs/plugin-react": "^5.1.1",
     "hono": "4.12.30",
+    "immer": "10.2.0",
+    "mcpserver": "workspace:*",
     "typescript": "^5.9.3",
     "vite": "^8.0.11",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "zustand": "5.0.13",
+    "zustand-lib": "workspace:*"
   }
 }
