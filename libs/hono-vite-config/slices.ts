@@ -1,6 +1,6 @@
 import mcpserver from "mcpserver";
 import viteConfigSlice from "./index";
 
-mcpserver.room("hono", "维护 Hono Vite 项目的配置、依赖和公开导入。")
+mcpserver.metas("hono")
   .register(viteConfigSlice)
-  .import();
+  .import(["hono", "维护 Hono Vite 项目的配置、依赖和公开导入。"]);

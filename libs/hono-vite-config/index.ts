@@ -514,19 +514,9 @@ store.setState({
   },
 });
 
-const read = {
-  readOnlyHint: true,
-  destructiveHint: false,
-  idempotentHint: true,
-  openWorldHint: false,
-} as const;
-const localMutate = {
-  readOnlyHint: false,
-  destructiveHint: false,
-  idempotentHint: true,
-  openWorldHint: false,
-} as const;
-const remoteMutate = { ...localMutate, openWorldHint: true } as const;
+const read = [true, false, true, false] as const;
+const localMutate = [false, false, true, false] as const;
+const remoteMutate = [false, false, true, true] as const;
 
 export default mcpserver.metas("viteConfig")
   .resource(
