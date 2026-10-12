@@ -267,7 +267,10 @@ export default server;
             host,
             port: businessPort,
             proxy: {
-              "^/(?!@|node_modules/|__vite_ping|__open-in-editor)": developmentHonoOrigin,
+              "^/(?!\\?|$|@|node_modules/|__vite_ping|__open-in-editor)": {
+                target: developmentHonoOrigin,
+                ws: true,
+              },
             },
             strictPort: true,
           },
