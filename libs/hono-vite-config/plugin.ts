@@ -1,4 +1,4 @@
-import {
+﻿import {
   cpSync,
   existsSync,
   mkdirSync,
@@ -18,7 +18,6 @@ import {
   isRunnableDevEnvironment,
   normalizePath,
   type Plugin,
-  type PluginOption,
   type UserConfig,
 } from "vite";
 
@@ -99,7 +98,7 @@ export default function honoReact2({
     define: rendererDefineInput,
     paths: rendererPaths,
   },
-}: Options): PluginOption {
+}: Options): Plugin[] {
   if (
     !honoPath.startsWith(".")
     || isAbsolute(honoPath)
@@ -267,7 +266,7 @@ export default server;
             host,
             port: businessPort,
             proxy: {
-              "^/(?!\\?|$|@|node_modules/|__vite_ping|__open-in-editor)": {
+              "^/(?!\\?|@|node_modules/|__vite_ping|__open-in-editor)": {
                 target: developmentHonoOrigin,
                 ws: true,
               },

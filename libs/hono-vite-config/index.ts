@@ -1,8 +1,9 @@
-import { execFile } from "node:child_process";
+﻿import { execFile } from "node:child_process";
 import { readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import mcpserver from "mcpserver";
+import { z } from "zod";
 import store from "./store";
 import {
   dependenciesInstallValidator,
@@ -514,95 +515,60 @@ store.setState({
   },
 });
 
-const read = [true, false, true, false] as const;
-const localMutate = [false, false, true, false] as const;
-const remoteMutate = [false, false, true, true] as const;
-
-export default mcpserver.metas("viteConfig")
-  .resource(
-    "get",
-    "/readme",
-    readmeUri,
-    {
-      title: "Vite 配置说明",
-      description: "读取 Vite 配置工具的使用说明。",
-      mimeType: "text/markdown",
-    },
-    async context =>
-      context.json(await store.getState().viteConfigActions.readme(context.req.query("uri"))),
-  )
-  .tool(
-    "post",
-    "/dependenciesInstall",
-    dependenciesInstallValidator,
-    "安装 Vite 配置所需的项目依赖。",
-    remoteMutate,
-    async context => {
-      const result = await store.getState().viteConfigActions.dependenciesInstall(
-        context.req.valid("json"),
-      );
-      return result.status === 400
-        ? context.json(result.body, 400)
-        : context.json(result.body);
-    },
-  )
-  .tool(
-    "post",
-    "/importsEnsure",
-    importsEnsureValidator,
-    "确保项目包含 Vite 配置所需的导入。",
-    localMutate,
-    async context => {
-      const result = await store.getState().viteConfigActions.importsEnsure(
-        context.req.valid("json"),
-      );
-      return result.status === 400
-        ? context.json(result.body, 400)
-        : context.json(result.body);
-    },
-  )
-  .tool(
-    "post",
-    "/projectRead",
-    projectReadValidator,
-    "读取项目中的 Vite 配置信息。",
-    read,
-    async context => {
-      const result = await store.getState().viteConfigActions.projectRead(
-        context.req.valid("json"),
-      );
-      return result.status === 400
-        ? context.json(result.body, 400)
-        : context.json(result.body);
-    },
-  )
-  .tool(
-    "post",
-    "/honoReact2",
-    honoReact2Validator,
-    "生成 Hono React 2 的 Vite 配置。",
-    read,
-    context => context.json(
-      store.getState().viteConfigActions.honoReact2(context.req.valid("json")),
-    ),
-  )
-  .tool(
-    "post",
-    "/honoServer",
-    honoServerValidator,
-    "生成 Hono 服务端的 Vite 配置。",
-    read,
-    context => context.json(
-      store.getState().viteConfigActions.honoServer(context.req.valid("json")),
-    ),
-  )
-  .tool(
-    "post",
-    "/honoUrl",
-    honoUrlValidator,
-    "生成 Hono 服务地址的 Vite 配置。",
-    read,
-    context => context.json(
-      store.getState().viteConfigActions.honoUrl(context.req.valid("json")),
-    ),
-  );
+export default mcpserver.metas("/viteConfig")
+  .add({
+    protocol: "resource",
+    path: "/readme",
+    schema: { uri: z.string().optional() },
+    description: "读取 Hono Vite 配置工具的使用说明。",
+    resourceUri: readmeUri,
+    handler: input => store.getState().viteConfigActions.readme(input.uri),
+  })
+  .add({
+    protocol: "tool",
+    path: "/dependenciesInstall",
+    schema: dependenciesInstallValidator.shape,
+    description: "安装 Hono Vite 项目所需的依赖。",
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
+    handler: async input => (await store.getState().viteConfigActions.dependenciesInstall(input)).body as Record<string, unknown>,
+  })
+  .add({
+    protocol: "tool",
+    path: "/importsEnsure",
+    schema: importsEnsureValidator.shape,
+    description: "确保项目源文件包含 Hono Vite 配置所需的导入。",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    handler: async input => (await store.getState().viteConfigActions.importsEnsure(input)).body as Record<string, unknown>,
+  })
+  .add({
+    protocol: "tool",
+    path: "/projectRead",
+    schema: projectReadValidator.shape,
+    description: "读取具体项目中的 Hono Vite 配置集成信息。",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    handler: async input => (await store.getState().viteConfigActions.projectRead(input)).body as Record<string, unknown>,
+  })
+  .add({
+    protocol: "tool",
+    path: "/honoReact2",
+    schema: honoReact2Validator.shape,
+    description: "生成 Hono React 2 的 Vite 配置。",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    handler: input => store.getState().viteConfigActions.honoReact2(input) as Record<string, unknown>,
+  })
+  .add({
+    protocol: "tool",
+    path: "/honoServer",
+    schema: honoServerValidator.shape,
+    description: "生成 Hono 服务端的 Vite 配置。",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    handler: input => store.getState().viteConfigActions.honoServer(input) as Record<string, unknown>,
+  })
+  .add({
+    protocol: "tool",
+    path: "/honoUrl",
+    schema: honoUrlValidator.shape,
+    description: "生成 Hono 服务地址的 Vite 配置。",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    handler: input => store.getState().viteConfigActions.honoUrl(input) as Record<string, unknown>,
+  });
