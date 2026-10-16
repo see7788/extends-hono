@@ -168,18 +168,8 @@ export default function honoReact2({
   const origin = `http://${host}:${String(businessPort)}`;
   const developmentHonoOrigin = `http://${host}:${String(developmentHonoPort)}`;
   const projectNames = projectSources.map(({ name }) => name).join(",");
-  const honoProjectName = projectSources
-    .map(({ name }) => JSON.stringify(name))
-    .join(" | ");
-  writeFileSync(
-    join(cwd, "declare.d.ts"),
-    `\uFEFF${[
-      `declare const honoServer: <E extends import("hono").Env>(hono: import("hono").Hono<E>) => import("@hono/node-server").ServerType;`,
-      `type HonoProjectName = ${honoProjectName};`,
-      "declare const honoUrl: (name: HonoProjectName) => string;",
-    ].join("\r\n")}\r\n`,
-    "utf8",
-  );
+  const declarationDirectory = join(cwd, "declare");
+  const runtimePath = join(declarationDirectory, "hono-vite-config.ts");
   const honoDefine = defineValues(honoDefineInput);
   const rendererDefine = defineValues(rendererDefineInput);
   const honoEntry = normalizePath(hono);
@@ -230,6 +220,37 @@ export default server;
     enforce: "pre",
     config(_config, { command }) {
       const development = command === "serve";
+      const runtimeSource = readFileSync(new URL("./hono.ts", import.meta.url), "utf8")
+        .replace(/^\uFEFF/, "");
+      const runtimeConfigStart = "/* hono-vite-config:runtime-config:start */";
+      const runtimeConfigEnd = "/* hono-vite-config:runtime-config:end */";
+      const runtimeConfigStartIndex = runtimeSource.indexOf(runtimeConfigStart);
+      const runtimeConfigEndIndex = runtimeSource.indexOf(runtimeConfigEnd);
+      if (
+        runtimeConfigStartIndex < 0
+        || runtimeConfigEndIndex < runtimeConfigStartIndex
+      ) {
+        throw new Error("hono-vite-config runtime config markers are missing");
+      }
+      const runtimeConfigEndPosition = runtimeConfigEndIndex + runtimeConfigEnd.length;
+      const generatedRuntimeConfig = [
+        `const host = ${JSON.stringify(host)};`,
+        `const port = ${development ? developmentHonoPort : businessPort};`,
+        `const origin = ${JSON.stringify(origin)};`,
+        `const projects = [${projectSources.map(({ name }) => JSON.stringify(name)).join(", ")}] as const;`,
+        "type HonoProjectName = (typeof projects)[number];",
+      ].join("\r\n");
+      const generatedRuntimeSource = [
+        runtimeSource.slice(0, runtimeConfigStartIndex),
+        generatedRuntimeConfig,
+        runtimeSource.slice(runtimeConfigEndPosition),
+      ].join("");
+      mkdirSync(declarationDirectory, { recursive: true });
+      writeFileSync(
+        runtimePath,
+        `\uFEFF${generatedRuntimeSource.replace(/\r?\n/g, "\r\n")}\r\n`,
+        "utf8",
+      );
       const temporaryRoot = resolve(
         cwd,
         "node_modules",

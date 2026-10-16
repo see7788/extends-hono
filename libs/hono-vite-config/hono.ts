@@ -3,6 +3,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import type { ServerType } from "@hono/node-server";
 import { Hono, type Env } from "hono";
 
+/* hono-vite-config:runtime-config:start */
 const host = process.env.HONOREACT_HOST;
 if (!host) throw new Error("process.env.HONOREACT_HOST is required");
 const port = Number(process.env.HONOREACT_PORT);
@@ -12,6 +13,8 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535) {
 const origin = process.env.HONOREACT_ORIGIN;
 if (!origin) throw new Error("process.env.HONOREACT_ORIGIN is required");
 const projects = (process.env.HONOREACT_PROJECTS ?? "").split(",").filter(Boolean);
+type HonoProjectName = string;
+/* hono-vite-config:runtime-config:end */
 const staticApp = new Hono().use("*", serveStatic({ root: "." }));
 
 type HonoRuntimeApp = {
@@ -67,7 +70,7 @@ const runtimeCreate = (app: HonoRuntimeApp): HonoRuntime => {
       const response = await currentApp.fetch(request);
       const url = new URL(request.url);
       const name = url.pathname.split("/")[1];
-      const renderer = name !== undefined && projects.includes(name);
+      const renderer = name !== undefined && projects.some(project => project === name);
       if (response.status !== 404 || (!renderer && name !== "assets")) return response;
       url.pathname = `/dist${url.pathname}`;
       const staticResponse = await staticApp.fetch(new Request(url, request));
@@ -110,6 +113,17 @@ export const honoServer = <E extends Env>(hono: Hono<E>): ServerType => {
   return runtime.server;
 };
 
-export const honoUrl = <Name extends string>(name: Name) => (
+export const honoUrl = <Name extends HonoProjectName>(name: Name) => (
   new URL(`/${name}/`, origin).toString()
 );
+
+declare global {
+  const honoViteConfig: {
+    readonly honoServer: typeof honoServer;
+    readonly honoUrl: typeof honoUrl;
+  };
+}
+
+Object.assign(globalThis, {
+  honoViteConfig: { honoServer, honoUrl },
+});
