@@ -4,33 +4,24 @@
   "type": "module",
   "exports": {
     "./README.md": "./README.md",
-    "./*": "./*.ts"
+    "./hono": "./hono.ts",
+    "./plugin": "./plugin.ts"
   },
   "dependencies": {
-    "vite-src": "workspace:*",
-    "zod": "^4.4.3"
+    "vite-src": "workspace:*"
   },
   "peerDependencies": {
     "@hono/node-server": "^1.19.11",
     "@vitejs/plugin-react": "^5.1.1",
     "hono": "4.12.30",
-    "vite": "^8.0.0",
-    "immer": "10.2.0",
-    "mcpserver": "workspace:*",
-    "zustand": "5.0.13",
-    "zustand-lib": "workspace:*"
+    "vite": "^8.0.0"
   },
   "devDependencies": {
     "@hono/node-server": "^1.19.11",
     "@types/node": "^26.0.1",
     "@vitejs/plugin-react": "^5.1.1",
     "hono": "4.12.30",
-    "immer": "10.2.0",
-    "mcpserver": "workspace:*",
     "typescript": "^5.9.3",
-    "vite": "^8.0.11",
-    "zod": "^4.4.3",
-    "zustand": "5.0.13",
-    "zustand-lib": "workspace:*"
+    "vite": "^8.0.11"
   }
 }

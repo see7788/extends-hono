@@ -168,6 +168,18 @@ export default function honoReact2({
   const origin = `http://${host}:${String(businessPort)}`;
   const developmentHonoOrigin = `http://${host}:${String(developmentHonoPort)}`;
   const projectNames = projectSources.map(({ name }) => name).join(",");
+  const honoProjectName = projectSources
+    .map(({ name }) => JSON.stringify(name))
+    .join(" | ");
+  writeFileSync(
+    join(cwd, "declare.d.ts"),
+    `\uFEFF${[
+      `declare const honoServer: <E extends import("hono").Env>(hono: import("hono").Hono<E>) => import("@hono/node-server").ServerType;`,
+      `type HonoProjectName = ${honoProjectName};`,
+      "declare const honoUrl: (name: HonoProjectName) => string;",
+    ].join("\r\n")}\r\n`,
+    "utf8",
+  );
   const honoDefine = defineValues(honoDefineInput);
   const rendererDefine = defineValues(rendererDefineInput);
   const honoEntry = normalizePath(hono);

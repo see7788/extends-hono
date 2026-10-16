@@ -270,9 +270,6 @@ importers:
       vite-src:
         specifier: workspace:*
         version: link:../../../extends-vite/libs/vite-src
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
     devDependencies:
       '@hono/node-server':
         specifier: ^1.19.11
@@ -286,24 +283,12 @@ importers:
       hono:
         specifier: 4.12.30
         version: 4.12.30
-      immer:
-        specifier: 10.2.0
-        version: 10.2.0
-      mcpserver:
-        specifier: workspace:*
-        version: link:../../../extends-mcp/libs/mcpserver
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
       vite:
         specifier: ^8.0.11
         version: 8.1.0(@types/node@26.1.2)(esbuild@0.28.1)(tsx@4.22.4)
-      zustand:
-        specifier: 5.0.13
-        version: 5.0.13(@types/react@19.2.18)(immer@10.2.0)(react@19.2.8)
-      zustand-lib:
-        specifier: workspace:*
-        version: link:../../../extends-zustand/libs/zustand-lib
 
   libs/windows-named-pipe:
     dependencies:

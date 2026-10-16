@@ -1,4 +1,4 @@
-import { serve } from "@hono/node-server";
+﻿import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import type { ServerType } from "@hono/node-server";
 import { Hono, type Env } from "hono";
@@ -109,13 +109,6 @@ export const honoServer = <E extends Env>(hono: Hono<E>): ServerType => {
   runtime.app = app;
   return runtime.server;
 };
-
-/*
- * The development runtime above deliberately keeps one real Node Server per
- * host/port and swaps only its Hono request delegate. Vite owns module graph
- * invalidation; this module owns listener continuity. Do not add a second
- * watcher, cache, proxy server, or restart loop here.
- */
 
 export const honoUrl = <Name extends string>(name: Name) => (
   new URL(`/${name}/`, origin).toString()

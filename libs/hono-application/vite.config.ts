@@ -9,6 +9,9 @@ export default defineConfig({
       hono: {
         path: "./src/index.ts",
         port: [3000, 3001],
+        define: {
+          APP_HEALTH_PATH: "/health",
+        },
       },
       renderer: {
         paths: ["../__PACKAGE_NAME__-renderer/src/index.tsx"],

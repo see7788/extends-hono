@@ -1,4 +1,4 @@
-# hono-vite-config
+﻿# hono-vite-config
 
 使用一份 Vite 配置运行一个 Hono 服务端和一个或多个 React 渲染项目。业务端口在开发和生产中始终不变；开发期由 Vite 提供 React 与 HMR，并把业务请求代理到隐藏的 Hono 端口。插件不依赖 Hono 的 Vite 插件。
 
@@ -80,7 +80,3 @@ const frontendUrl = honoUrl("frontend");
 ```
 
 `honoUrl` 的参数必须等于目标 React 项目的 `package.json#name`，禁止调用方重新拼接 origin、端口或路径。
-
-## MCP 配套入口
-
-需要把上述黑盒契约发布为 MCP 房间时，导入一次 `hono-vite-config/slices` 即可；MCP 切片与本库共用验证器、类型和主 Store，不再维护独立的 MCP 兄弟包。
