@@ -1,5 +1,4 @@
-import react from "@vitejs/plugin-react";
-import ubuntu from "ubuntu-lib/index.ts";
+﻿import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import honoReact from "hono-vite-config/plugin";
 
@@ -15,7 +14,5 @@ export default defineConfig({
         paths: ["../__PACKAGE_NAME__-renderer/src/index.tsx"],
       },
     }),
-    ubuntu.vite.dev.forward(),
-    ubuntu.vite.pro.nodejs(),
   ],
 });

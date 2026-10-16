@@ -230,43 +230,18 @@ importers:
 
   libs/hono-application:
     dependencies:
+      '@hono/node-server':
+        specifier: ^1.19.11
+        version: 1.19.14(hono@4.12.30)
       hono:
         specifier: 4.12.30
         version: 4.12.30
       hono-vite-config:
         specifier: workspace:*
         version: link:../hono-vite-config
-    devDependencies:
-      '@types/node':
-        specifier: ^22.20.1
-        version: 22.20.1
-      '@vitejs/plugin-react':
-        specifier: ^5.1.1
-        version: 5.2.0(vite@8.1.0(@types/node@22.20.1)(esbuild@0.28.1)(tsx@4.22.4))
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      ubuntu-lib:
-        specifier: workspace:*
-        version: link:../../../extends-ssh/ubuntu-lib
-      vite:
-        specifier: ^8.0.11
-        version: 8.1.0(@types/node@22.20.1)(esbuild@0.28.1)(tsx@4.22.4)
-
-  libs/hono-library:
-    devDependencies:
-      '@types/node':
-        specifier: ^22.20.1
-        version: 22.20.1
-      hono:
-        specifier: 4.12.30
-        version: 4.12.30
       immer:
         specifier: 10.2.0
         version: 10.2.0
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -276,6 +251,19 @@ importers:
       zustand-lib:
         specifier: workspace:*
         version: link:../../../extends-zustand/libs/zustand-lib
+    devDependencies:
+      '@types/node':
+        specifier: ^26.0.1
+        version: 26.1.2
+      '@vitejs/plugin-react':
+        specifier: ^5.1.1
+        version: 5.2.0(vite@8.1.0(@types/node@26.1.2)(esbuild@0.28.1)(tsx@4.22.4))
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^8.0.11
+        version: 8.1.0(@types/node@26.1.2)(esbuild@0.28.1)(tsx@4.22.4)
 
   libs/hono-vite-config:
     dependencies:
