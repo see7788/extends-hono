@@ -244,7 +244,7 @@ export default server;
         runtimeSource.slice(0, runtimeConfigStartIndex),
         generatedRuntimeConfig,
         runtimeSource.slice(runtimeConfigEndPosition),
-      ].join("");
+      ].join("").replace(/(?:\r?\n)+$/, "");
       mkdirSync(declarationDirectory, { recursive: true });
       writeFileSync(
         runtimePath,
