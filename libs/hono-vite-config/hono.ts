@@ -21,6 +21,30 @@ type HonoRuntimeApp = {
   readonly fetch: (request: Request) => Response | Promise<Response>;
 };
 
+const runtimeFetch = async (
+  app: HonoRuntimeApp,
+  request: Request,
+): Promise<Response> => {
+  const response = await app.fetch(request);
+  const url = new URL(request.url);
+  const name = url.pathname.split("/")[1];
+  const renderer = name !== undefined && projects.some(project => project === name);
+  if (response.status !== 404 || (!renderer && name !== "assets")) return response;
+  url.pathname = `/dist${url.pathname}`;
+  const staticResponse = await staticApp.fetch(new Request(url, request));
+  if (
+    staticResponse.status !== 404
+    || !renderer
+    || request.method !== "GET"
+    || !request.headers.get("accept")?.includes("text/html")
+  ) {
+    return staticResponse;
+  }
+  url.pathname = `/dist/${name}/index.html`;
+  return staticApp.fetch(new Request(url, request));
+};
+
+/* hono-vite-config:runtime-lifecycle:start */
 type ServerListener = (...input: unknown[]) => void;
 
 type HonoRuntime = {
@@ -62,29 +86,7 @@ const serverExtensionsReset = (runtime: HonoRuntime): void => {
 const runtimeCreate = (app: HonoRuntimeApp): HonoRuntime => {
   const runtime = { app } as HonoRuntime;
   const server = serve({
-    fetch: async request => {
-      // Capture one application generation for the complete request. A hot
-      // update can publish the next generation without changing an in-flight
-      // request or restarting the Node listener.
-      const currentApp = runtime.app;
-      const response = await currentApp.fetch(request);
-      const url = new URL(request.url);
-      const name = url.pathname.split("/")[1];
-      const renderer = name !== undefined && projects.some(project => project === name);
-      if (response.status !== 404 || (!renderer && name !== "assets")) return response;
-      url.pathname = `/dist${url.pathname}`;
-      const staticResponse = await staticApp.fetch(new Request(url, request));
-      if (
-        staticResponse.status !== 404
-        || !renderer
-        || request.method !== "GET"
-        || !request.headers.get("accept")?.includes("text/html")
-      ) {
-        return staticResponse;
-      }
-      url.pathname = `/dist/${name}/index.html`;
-      return staticApp.fetch(new Request(url, request));
-    },
+    fetch: request => runtimeFetch(runtime.app, request),
     hostname: host,
     port,
   });
@@ -112,6 +114,7 @@ export const honoServer = <E extends Env>(hono: Hono<E>): ServerType => {
   runtime.app = app;
   return runtime.server;
 };
+/* hono-vite-config:runtime-lifecycle:end */
 
 export const honoUrl = <Name extends HonoProjectName>(name: Name) => (
   new URL(`/${name}/`, origin).toString()

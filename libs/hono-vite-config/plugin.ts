@@ -240,10 +240,45 @@ export default server;
         `const projects = [${projectSources.map(({ name }) => JSON.stringify(name)).join(", ")}] as const;`,
         "type HonoProjectName = (typeof projects)[number];",
       ].join("\r\n");
-      const generatedRuntimeSource = [
+      const runtimeConfigSource = [
         runtimeSource.slice(0, runtimeConfigStartIndex),
         generatedRuntimeConfig,
         runtimeSource.slice(runtimeConfigEndPosition),
+      ].join("");
+      const runtimeLifecycleStart = "/* hono-vite-config:runtime-lifecycle:start */";
+      const runtimeLifecycleEnd = "/* hono-vite-config:runtime-lifecycle:end */";
+      const runtimeLifecycleStartIndex = runtimeConfigSource.indexOf(runtimeLifecycleStart);
+      const runtimeLifecycleEndIndex = runtimeConfigSource.indexOf(runtimeLifecycleEnd);
+      if (
+        runtimeLifecycleStartIndex < 0
+        || runtimeLifecycleEndIndex < runtimeLifecycleStartIndex
+      ) {
+        throw new Error("hono-vite-config runtime lifecycle markers are missing");
+      }
+      const runtimeLifecycleEndPosition = runtimeLifecycleEndIndex + runtimeLifecycleEnd.length;
+      const productionRuntimeLifecycle = [
+        "export const honoServer = <E extends Env>(hono: Hono<E>): ServerType => {",
+        "  const app: HonoRuntimeApp = { fetch: request => hono.fetch(request) };",
+        "  return serve({",
+        "    fetch: request => runtimeFetch(app, request),",
+        "    hostname: host,",
+        "    port,",
+        "  });",
+        "};",
+      ].join("\r\n");
+      const developmentRuntimeLifecycle = runtimeConfigSource
+        .slice(
+          runtimeLifecycleStartIndex + runtimeLifecycleStart.length,
+          runtimeLifecycleEndIndex,
+        )
+        .replace(/^\r?\n/, "")
+        .replace(/\r?\n$/, "");
+      const generatedRuntimeSource = [
+        runtimeConfigSource.slice(0, runtimeLifecycleStartIndex),
+        development
+          ? developmentRuntimeLifecycle
+          : productionRuntimeLifecycle,
+        runtimeConfigSource.slice(runtimeLifecycleEndPosition),
       ].join("").replace(/(?:\r?\n)+$/, "");
       mkdirSync(declarationDirectory, { recursive: true });
       writeFileSync(
