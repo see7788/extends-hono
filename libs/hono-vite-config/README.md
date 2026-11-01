@@ -9,8 +9,17 @@
 ```text
 hono-vite-config/
 ├─ plugin.ts   # Vite 配置消费；创建开发服务和全部构建目标
-├─ hono.ts     # 插件运行时黑盒；启动 Hono、热替换 app 并生成页面 URL
+├─ hono.development.ts     # 开发环境 TypeScript 模板
+├─ hono.production.ts # 生产环境 TypeScript 模板
 ```
+
+具体项目的运行时产物由插件统一生成到：
+
+```text
+declare/hono.ts
+```
+
+插件用 TypeScript AST 把当前项目的具体端口、页面项目列表和 `dist` 目录写入该文件。业务入口直接导入它，不再依赖全局对象。
 
 ## Vite 配置
 
@@ -25,12 +34,10 @@ export default defineConfig({
     honoReact2({
       hono: {
         external: [],
-        path: "./libs/backend/index.ts",
+        path: "./src/index.ts",
         port: [3000, 3001],
-        define: {},
       },
       renderer: {
-        define: {},
         paths: [
           "./libs/frontend/index.tsx",
           "./libs/admin/index.tsx",
@@ -45,10 +52,8 @@ export default defineConfig({
 
 - `hono.path` 与 `renderer.paths` 使用同一个 `path_t`：必须以 `.` 开始，并命名为 `index.ts` 或 `index.tsx`。
 - `hono.port[0]` 是开发与生产始终使用的公开业务端口；`hono.port[1]` 是仅在开发期使用的隐藏 Hono 端口。两个端口必须不同，且都是 `1..65535` 的整数。
-- `hono.define` 只注入 Hono 项目。
 - `hono.external` 只放必须由 Node 在运行时加载的原生或 CommonJS 依赖；运行应用必须直接声明这些依赖。
 - `renderer.paths` 是非空入口数组。
-- `renderer.define` 只注入 renderer；`hono.define` 只注入 Hono SSR。两者都可省略。
 - 每个 React 入口所在目录必须具有唯一的 `package.json#name`；该名称同时作为 URL 路径和 `dist` 子目录。
 - 插件返回 Vite 可直接接收的插件组，不需要调用方展开。
 - React 转换仍由目标项目的 `@vitejs/plugin-react` 提供，并与展开后的插件一起放入 `plugins`。
@@ -58,10 +63,10 @@ export default defineConfig({
 ## Hono 入口
 
 ```ts
-import { honoServer } from "hono-vite-config/hono";
+import hono from "./declare/hono";
 import routers from "./routers";
 
-const server = honoServer(routers);
+const server = hono.honoServer(routers);
 
 // 项目可在这里为同一个 server 注入 WebSocket、监听事件等能力。
 export default server;
@@ -74,9 +79,9 @@ Hono 服务器由项目入口调用 `honoServer` 创建并默认导出；插件�
 ## 页面地址
 
 ```ts
-import { honoUrl } from "hono-vite-config/hono";
+import hono from "./declare/hono";
 
-const frontendUrl = honoUrl("frontend");
+const frontendUrl = hono.honoUrl("frontend");
 ```
 
 `honoUrl` 的参数必须等于目标 React 项目的 `package.json#name`，禁止调用方重新拼接 origin、端口或路径。

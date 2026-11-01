@@ -9,7 +9,6 @@
 } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import {
-  type JsonValue,
   viteHtmlEntryUrl,
   viteHtmlMiddleware,
 } from "vite-src/public";
@@ -20,71 +19,23 @@ import {
   type Plugin,
   type UserConfig,
 } from "vite";
+import { Eta } from "eta";
+import { Project, SyntaxKind } from "ts-morph";
 
 export type path_t = `.${string}/index.${"ts" | "tsx"}`;
-
-type ports_t = readonly [
-  businessPort: number,
-  developmentHonoPort: number,
-];
 
 type Options = {
   hono: {
     external?: readonly string[];
     path: path_t;
-    port: ports_t;
-    define?: Readonly<Record<string, JsonValue>>;
+    port: readonly [
+      businessPort: number,
+      developmentHonoPort: number,
+    ];
   };
   renderer: {
-    define?: Readonly<Record<string, JsonValue>>;
     paths: readonly [path_t, ...path_t[]];
   };
-};
-
-type ReactProject = {
-  entry: string;
-  html: string;
-  name: string;
-  root: string;
-};
-
-type ReactProjectSource = Omit<ReactProject, "html">;
-
-const packageName = (root: string): string => {
-  const { name } = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
-    name?: unknown;
-  };
-  if (typeof name !== "string" || !/^[A-Za-z0-9._~-]+$/.test(name)) {
-    throw new Error(`package.json name must be one URL path segment: ${root}`);
-  }
-  return name;
-};
-
-const defineValues = (
-  define?: Readonly<Record<string, JsonValue>>,
-): Record<string, string> => Object.fromEntries(
-  Object.entries(define ?? {}).map(([name, value]) => {
-    const serialized = typeof value === "string" ? value : JSON.stringify(value);
-    if (serialized === undefined) throw new Error(`define ${name} cannot be serialized`);
-    return [name, serialized];
-  }),
-);
-
-const htmlSource = (project: ReactProject, command: "serve" | "build"): string => {
-  const entry = viteHtmlEntryUrl(project.html, project.entry, command);
-  return `<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${project.name}</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="${entry}"></script>
-  </body>
-</html>
-`;
 };
 
 export default function honoReact2({
@@ -92,13 +43,29 @@ export default function honoReact2({
     external: honoExternal = [],
     path: honoPath,
     port: ports,
-    define: honoDefineInput,
   },
   renderer: {
-    define: rendererDefineInput,
     paths: rendererPaths,
   },
 }: Options): Plugin[] {
+  type ReactProject = {
+    entry: string;
+    html: string;
+    name: string;
+    root: string;
+  };
+  type ReactProjectSource = Omit<ReactProject, "html">;
+
+  const packageName = (root: string): string => {
+    const { name } = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+      name?: unknown;
+    };
+    if (typeof name !== "string" || !/^[A-Za-z0-9._~-]+$/.test(name)) {
+      throw new Error(`package.json name must be one URL path segment: ${root}`);
+    }
+    return name;
+  };
+
   if (
     !honoPath.startsWith(".")
     || isAbsolute(honoPath)
@@ -167,11 +134,13 @@ export default function honoReact2({
 
   const origin = `http://${host}:${String(businessPort)}`;
   const developmentHonoOrigin = `http://${host}:${String(developmentHonoPort)}`;
-  const projectNames = projectSources.map(({ name }) => name).join(",");
-  const declarationDirectory = join(cwd, "declare");
-  const runtimePath = join(declarationDirectory, "hono-vite-config.ts");
-  const honoDefine = defineValues(honoDefineInput);
-  const rendererDefine = defineValues(rendererDefineInput);
+  const projectNames = projectSources.map(({ name }) => JSON.stringify(name)).join(", ");
+  const distDirectory = "dist";
+  const declareDirectory = join(dirname(hono), "declare");
+  const runtimePath = join(declareDirectory, "hono.ts");
+  const htmlTemplate = readFileSync(new URL("./index.html", import.meta.url), "utf8")
+    .replace(/^\uFEFF/, "");
+  const eta = new Eta();
   const honoEntry = normalizePath(hono);
   const runtimeEntry = "virtual:honoreact2:ssr-runtime";
   const runtimeModule = "\0honoreact2:ssr-runtime";
@@ -220,67 +189,51 @@ export default server;
     enforce: "pre",
     config(_config, { command }) {
       const development = command === "serve";
-      const runtimeSource = readFileSync(new URL("./hono.ts", import.meta.url), "utf8")
+      const runtimeTemplate = readFileSync(
+        new URL(development ? "./hono.development.ts" : "./hono.production.ts", import.meta.url),
+        "utf8",
+      )
         .replace(/^\uFEFF/, "");
-      const runtimeConfigStart = "/* hono-vite-config:runtime-config:start */";
-      const runtimeConfigEnd = "/* hono-vite-config:runtime-config:end */";
-      const runtimeConfigStartIndex = runtimeSource.indexOf(runtimeConfigStart);
-      const runtimeConfigEndIndex = runtimeSource.indexOf(runtimeConfigEnd);
-      if (
-        runtimeConfigStartIndex < 0
-        || runtimeConfigEndIndex < runtimeConfigStartIndex
-      ) {
-        throw new Error("hono-vite-config runtime config markers are missing");
-      }
-      const runtimeConfigEndPosition = runtimeConfigEndIndex + runtimeConfigEnd.length;
-      const generatedRuntimeConfig = [
-        `const host = ${JSON.stringify(host)};`,
-        `const port = ${development ? developmentHonoPort : businessPort};`,
-        `const origin = ${JSON.stringify(origin)};`,
-        `const projects = [${projectSources.map(({ name }) => JSON.stringify(name)).join(", ")}] as const;`,
-        "type HonoProjectName = (typeof projects)[number];",
-      ].join("\r\n");
-      const runtimeConfigSource = [
-        runtimeSource.slice(0, runtimeConfigStartIndex),
-        generatedRuntimeConfig,
-        runtimeSource.slice(runtimeConfigEndPosition),
-      ].join("");
-      const runtimeLifecycleStart = "/* hono-vite-config:runtime-lifecycle:start */";
-      const runtimeLifecycleEnd = "/* hono-vite-config:runtime-lifecycle:end */";
-      const runtimeLifecycleStartIndex = runtimeConfigSource.indexOf(runtimeLifecycleStart);
-      const runtimeLifecycleEndIndex = runtimeConfigSource.indexOf(runtimeLifecycleEnd);
-      if (
-        runtimeLifecycleStartIndex < 0
-        || runtimeLifecycleEndIndex < runtimeLifecycleStartIndex
-      ) {
-        throw new Error("hono-vite-config runtime lifecycle markers are missing");
-      }
-      const runtimeLifecycleEndPosition = runtimeLifecycleEndIndex + runtimeLifecycleEnd.length;
-      const productionRuntimeLifecycle = [
-        "export const honoServer = <E extends Env>(hono: Hono<E>): ServerType => {",
-        "  const app: HonoRuntimeApp = { fetch: request => hono.fetch(request) };",
-        "  return serve({",
-        "    fetch: request => runtimeFetch(app, request),",
-        "    hostname: host,",
-        "    port,",
-        "  });",
-        "};",
-      ].join("\r\n");
-      const developmentRuntimeLifecycle = runtimeConfigSource
-        .slice(
-          runtimeLifecycleStartIndex + runtimeLifecycleStart.length,
-          runtimeLifecycleEndIndex,
-        )
-        .replace(/^\r?\n/, "")
-        .replace(/\r?\n$/, "");
-      const generatedRuntimeSource = [
-        runtimeConfigSource.slice(0, runtimeLifecycleStartIndex),
-        development
-          ? developmentRuntimeLifecycle
-          : productionRuntimeLifecycle,
-        runtimeConfigSource.slice(runtimeLifecycleEndPosition),
-      ].join("").replace(/(?:\r?\n)+$/, "");
-      mkdirSync(declarationDirectory, { recursive: true });
+      const runtimeProject = new Project({
+        skipFileDependencyResolution: true,
+        useInMemoryFileSystem: true,
+      });
+      const runtimeFile = runtimeProject.createSourceFile("hono.development.ts", runtimeTemplate);
+      const runtimeConfig = runtimeFile
+        .getDescendantsOfKind(SyntaxKind.VariableDeclaration)
+        .find(variable => variable.getName() === "config");
+      if (!runtimeConfig) throw new Error("hono-vite-config runtime config is missing");
+      const runtimeConfigObject = runtimeConfig
+        .getInitializerIfKindOrThrow(SyntaxKind.AsExpression)
+        .getExpressionIfKindOrThrow(SyntaxKind.ObjectLiteralExpression);
+      runtimeConfigObject.getPropertyOrThrow("host").replaceWithText(
+        `host: ${JSON.stringify(host)}`,
+      );
+      runtimeConfigObject.getPropertyOrThrow("port").replaceWithText(
+        `port: ${String(development ? developmentHonoPort : businessPort)}`,
+      );
+      runtimeConfigObject.getPropertyOrThrow("origin").replaceWithText(
+        `origin: ${JSON.stringify(origin)}`,
+      );
+      runtimeConfigObject.getPropertyOrThrow("projects").replaceWithText(
+        `projects: [${projectNames}] as const`,
+      );
+      runtimeConfigObject.getPropertyOrThrow("distDirectory").replaceWithText(
+        `distDirectory: ${JSON.stringify(distDirectory)}`,
+      );
+      const honoUrl = runtimeFile
+        .getVariableDeclarationOrThrow("honoUrl")
+        .getInitializerIfKindOrThrow(SyntaxKind.ArrowFunction);
+      const projectType = honoUrl.getTypeParameters()[0];
+      if (!projectType) throw new Error("hono-vite-config honoUrl type parameter is missing");
+      projectType.setConstraint(projectSources.map(({ name }) => JSON.stringify(name)).join(" | ") || "never");
+      const url = honoUrl
+        .getDescendantsOfKind(SyntaxKind.NewExpression)
+        .find(expression => expression.getExpression().getText() === "URL");
+      if (!url) throw new Error("hono-vite-config honoUrl URL expression is missing");
+      url.getArguments()[1]?.replaceWithText(JSON.stringify(origin));
+      const generatedRuntimeSource = runtimeFile.getFullText().replace(/(?:\r?\n)+$/, "");
+      mkdirSync(declareDirectory, { recursive: true });
       writeFileSync(
         runtimePath,
         `\uFEFF${generatedRuntimeSource.replace(/\r?\n/g, "\r\n")}\r\n`,
@@ -295,7 +248,14 @@ export default server;
       );
       const { hasPublic, publicRoot } = projectsPrepare(temporaryRoot);
       for (const project of projects) {
-        writeFileSync(project.html, htmlSource(project, development ? "serve" : "build"), "utf8");
+        writeFileSync(
+          project.html,
+          eta.renderString(htmlTemplate, {
+            title: project.name,
+            entry: viteHtmlEntryUrl(project.html, project.entry, development ? "serve" : "build"),
+          }),
+          "utf8",
+        );
       }
       const common: UserConfig = {
         base: "/",
@@ -307,21 +267,13 @@ export default server;
           ...common,
           appType: "custom",
           environments: {
-            client: { consumer: "client", define: rendererDefine },
+            client: { consumer: "client" },
             ssr: {
               consumer: "server",
               dev: {
                 createEnvironment: (name, config) => (
                   createRunnableDevEnvironment(name, config)
                 ),
-              },
-              define: {
-                ...honoDefine,
-                "process.env.HONOREACT_HOST": JSON.stringify(host),
-                "process.env.HONOREACT_ORIGIN": JSON.stringify(origin),
-                "process.env.HONOREACT_PORT": JSON.stringify(String(developmentHonoPort)),
-                "process.env.HONOREACT_PROJECTS": JSON.stringify(projectNames),
-                "process.env.NODE_ENV": JSON.stringify("development"),
               },
               resolve: {
                 external: [...honoExternal],
@@ -350,10 +302,9 @@ export default server;
         environments: {
           client: {
             consumer: "client",
-            define: rendererDefine,
             build: {
               emptyOutDir: true,
-              outDir: resolve(cwd, "dist"),
+              outDir: resolve(cwd, distDirectory),
               rollupOptions: {
                 input: Object.fromEntries(projects.map(({ html, name }) => [name, html])),
               },
@@ -361,21 +312,13 @@ export default server;
           },
           ssr: {
             consumer: "server",
-            define: {
-              ...honoDefine,
-              "process.env.HONOREACT_HOST": JSON.stringify(host),
-              "process.env.HONOREACT_ORIGIN": JSON.stringify(origin),
-              "process.env.HONOREACT_PORT": JSON.stringify(String(businessPort)),
-              "process.env.HONOREACT_PROJECTS": JSON.stringify(projectNames),
-              "process.env.NODE_ENV": JSON.stringify("production"),
-            },
             resolve: {
               external: [...honoExternal],
               noExternal: ["hono-vite-config"],
             },
             build: {
               emptyOutDir: true,
-              outDir: resolve(cwd, "dist", packageName(cwd)),
+              outDir: resolve(cwd, distDirectory, packageName(cwd)),
               rollupOptions: {
                 input: honoEntry,
                 output: { entryFileNames: "index.js", format: "es" },
