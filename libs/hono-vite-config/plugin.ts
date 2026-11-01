@@ -34,7 +34,7 @@ type Options = {
     ];
   };
   renderer: {
-    paths: readonly [path_t, ...path_t[]];
+    paths: readonly path_t[];
   };
 };
 
@@ -298,18 +298,25 @@ export default server;
 
       return {
         ...common,
-        builder: {},
+        builder: {
+          async buildApp(builder) {
+            if (projects.length > 0) await builder.build(builder.environments.client);
+            await builder.build(builder.environments.ssr);
+          },
+        },
         environments: {
-          client: {
-            consumer: "client",
-            build: {
-              emptyOutDir: true,
-              outDir: resolve(cwd, distDirectory),
-              rollupOptions: {
-                input: Object.fromEntries(projects.map(({ html, name }) => [name, html])),
+          ...(projects.length === 0 ? {} : {
+            client: {
+              consumer: "client",
+              build: {
+                emptyOutDir: true,
+                outDir: resolve(cwd, distDirectory),
+                rollupOptions: {
+                  input: Object.fromEntries(projects.map(({ html, name }) => [name, html])),
+                },
               },
             },
-          },
+          }),
           ssr: {
             consumer: "server",
             resolve: {
