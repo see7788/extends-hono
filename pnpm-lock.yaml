@@ -195,9 +195,6 @@ importers:
 
   libs/hono-vite-config:
     dependencies:
-      vite-src:
-        specifier: workspace:*
-        version: link:../../../extends-vite/libs/vite-src
     devDependencies:
       '@hono/node-server':
         specifier: ^1.19.11

@@ -9,8 +9,7 @@
 ```text
 hono-vite-config/
 ├─ plugin.ts   # Vite 配置消费；创建开发服务和全部构建目标
-├─ hono.development.ts     # 开发环境 TypeScript 模板
-├─ hono.production.ts # 生产环境 TypeScript 模板
+├─ hono.ts     # 开发与生产共用的 TypeScript 模板
 ```
 
 具体项目的运行时产物由插件统一生成到：
@@ -20,6 +19,10 @@ declare/hono.ts
 ```
 
 插件用 TypeScript AST 把当前项目的具体端口、页面项目列表和 `dist` 目录写入该文件。业务入口直接导入它，不再依赖全局对象。
+
+模板导出 `honoServer`、`honoUrl`、`ProjectName`、`host`、`origin` 和 `port`；其中开发环境的 `port` 是隐藏 Hono 端口，`origin` 始终是公开业务 origin。默认导出保留运行时成员，类型 `ProjectName` 通过具名导出使用。
+
+HTML 模板由 Eta 渲染，当前可消费 `it.title`、`it.entry` 和 `it.projects`；`it.projects` 只包含经过校验的 React 项目 URL 名称，不包含本地文件路径。`it.entry` 可以指向 `.ts` 或 `.tsx`，由 Vite 在开发和构建阶段转换，浏览器本身不会直接执行 TypeScript。
 
 ## Vite 配置
 

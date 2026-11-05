@@ -7,11 +7,7 @@
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
-import {
-  viteHtmlEntryUrl,
-  viteHtmlMiddleware,
-} from "vite-src/public";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   createRunnableDevEnvironment,
   isRunnableDevEnvironment,
@@ -190,7 +186,7 @@ export default server;
     config(_config, { command }) {
       const development = command === "serve";
       const runtimeTemplate = readFileSync(
-        new URL(development ? "./hono.development.ts" : "./hono.production.ts", import.meta.url),
+        new URL("./hono.ts", import.meta.url),
         "utf8",
       )
         .replace(/^\uFEFF/, "");
@@ -198,40 +194,21 @@ export default server;
         skipFileDependencyResolution: true,
         useInMemoryFileSystem: true,
       });
-      const runtimeFile = runtimeProject.createSourceFile("hono.development.ts", runtimeTemplate);
-      const runtimeConfig = runtimeFile
-        .getDescendantsOfKind(SyntaxKind.VariableDeclaration)
-        .find(variable => variable.getName() === "config");
-      if (!runtimeConfig) throw new Error("hono-vite-config runtime config is missing");
-      const runtimeConfigObject = runtimeConfig
-        .getInitializerIfKindOrThrow(SyntaxKind.AsExpression)
-        .getExpressionIfKindOrThrow(SyntaxKind.ObjectLiteralExpression);
-      runtimeConfigObject.getPropertyOrThrow("host").replaceWithText(
-        `host: ${JSON.stringify(host)}`,
+      const runtimeFile = runtimeProject.createSourceFile("hono.ts", runtimeTemplate);
+      runtimeFile.getVariableDeclarationOrThrow("host").setInitializer(JSON.stringify(host));
+      runtimeFile.getVariableDeclarationOrThrow("port").setInitializer(
+        String(development ? developmentHonoPort : businessPort),
       );
-      runtimeConfigObject.getPropertyOrThrow("port").replaceWithText(
-        `port: ${String(development ? developmentHonoPort : businessPort)}`,
+      runtimeFile.getVariableDeclarationOrThrow("origin").setInitializer(JSON.stringify(origin));
+      runtimeFile.getVariableDeclarationOrThrow("projects").setInitializer(
+        `[${projectNames}] as const`,
       );
-      runtimeConfigObject.getPropertyOrThrow("origin").replaceWithText(
-        `origin: ${JSON.stringify(origin)}`,
+      runtimeFile.getVariableDeclarationOrThrow("distDirectory").setInitializer(
+        JSON.stringify(distDirectory),
       );
-      runtimeConfigObject.getPropertyOrThrow("projects").replaceWithText(
-        `projects: [${projectNames}] as const`,
+      runtimeFile.getTypeAliasOrThrow("ProjectName").setType(
+        projectSources.map(({ name }) => JSON.stringify(name)).join(" | ") || "never",
       );
-      runtimeConfigObject.getPropertyOrThrow("distDirectory").replaceWithText(
-        `distDirectory: ${JSON.stringify(distDirectory)}`,
-      );
-      const honoUrl = runtimeFile
-        .getVariableDeclarationOrThrow("honoUrl")
-        .getInitializerIfKindOrThrow(SyntaxKind.ArrowFunction);
-      const projectType = honoUrl.getTypeParameters()[0];
-      if (!projectType) throw new Error("hono-vite-config honoUrl type parameter is missing");
-      projectType.setConstraint(projectSources.map(({ name }) => JSON.stringify(name)).join(" | ") || "never");
-      const url = honoUrl
-        .getDescendantsOfKind(SyntaxKind.NewExpression)
-        .find(expression => expression.getExpression().getText() === "URL");
-      if (!url) throw new Error("hono-vite-config honoUrl URL expression is missing");
-      url.getArguments()[1]?.replaceWithText(JSON.stringify(origin));
       const generatedRuntimeSource = runtimeFile.getFullText().replace(/(?:\r?\n)+$/, "");
       mkdirSync(declareDirectory, { recursive: true });
       writeFileSync(
@@ -252,7 +229,13 @@ export default server;
           project.html,
           eta.renderString(htmlTemplate, {
             title: project.name,
-            entry: viteHtmlEntryUrl(project.html, project.entry, development ? "serve" : "build"),
+            entry: (() => {
+              const relativeEntry = normalizePath(relative(dirname(resolve(project.html)), resolve(project.entry)));
+              return development
+                ? `/@fs/${normalizePath(resolve(project.entry))}`
+                : relativeEntry.startsWith(".") ? relativeEntry : `./${relativeEntry}`;
+            })(),
+            projects: projectSources.map(({ name }) => name),
           }),
           "utf8",
         );
@@ -352,7 +335,32 @@ export default server;
       return [honoModule];
     },
     async configureServer(server) {
-      viteHtmlMiddleware(server, projects, origin);
+      server.middlewares.use(async (request, response, next) => {
+        try {
+          if (request.method !== "GET" || !request.url) return next();
+          const url = new URL(request.url, origin);
+          const project = projects.find(({ name }) => (
+            url.pathname === `/${name}` || url.pathname.startsWith(`/${name}/`)
+          ));
+          if (!project) return next();
+          if (url.pathname === `/${project.name}`) {
+            response.statusCode = 307;
+            response.setHeader("Location", `/${project.name}/${url.search}`);
+            response.end();
+            return;
+          }
+          if (!request.headers.accept?.includes("text/html")) return next();
+          const html = await server.transformIndexHtml(
+            url.pathname,
+            readFileSync(project.html, "utf8"),
+          );
+          response.statusCode = 200;
+          response.setHeader("Content-Type", "text/html; charset=utf-8");
+          response.end(html);
+        } catch (error) {
+          next(error);
+        }
+      });
       const environment = server.environments.ssr;
       if (!isRunnableDevEnvironment(environment)) {
         throw new Error("honoreact2 requires a runnable Vite SSR environment");

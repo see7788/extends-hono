@@ -1,14 +1,14 @@
 {
   "name": "hono-vite-config",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "exports": {
     "./README.md": "./README.md",
-    "./hono": "./hono.ts",
     "./plugin": "./plugin.ts"
   },
   "dependencies": {
-    "vite-src": "workspace:*"
+    "eta": "4.6.0",
+    "ts-morph": "28.0.0"
   },
   "peerDependencies": {
     "@hono/node-server": "^1.19.11",
