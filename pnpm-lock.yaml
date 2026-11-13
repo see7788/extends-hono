@@ -36,16 +36,13 @@ importers:
     dependencies:
       '@hono/mcp':
         specifier: 0.3.2
-        version: 0.3.2(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(hono-rate-limiter@0.5.4(hono@4.12.30))(hono@4.12.30)(zod@4.4.3)
-      '@hono/node-ws':
-        specifier: 1.3.1
-        version: 1.3.1(@hono/node-server@1.19.17(hono@4.12.30))(hono@4.12.30)
+        version: 0.3.2(@modelcontextprotocol/sdk@1.30.0(zod@4.6.7))(hono-rate-limiter@0.5.4(hono@4.12.30))(hono@4.12.30)(zod@4.6.7)
       '@hono/zod-validator':
         specifier: ^0.9.0
-        version: 0.9.0(hono@4.12.30)(zod@4.4.3)
+        version: 0.9.0(hono@4.12.30)(zod@4.6.7)
       '@modelcontextprotocol/sdk':
         specifier: 1.30.0
-        version: 1.30.0(zod@4.4.3)
+        version: 1.30.0(zod@4.6.7)
       '@scalar/hono-api-reference':
         specifier: ^0.11.16
         version: 0.11.16(hono@4.12.30)
@@ -72,17 +69,23 @@ importers:
         specifier: 5.8.3
         version: 5.8.3
       zod:
-        specifier: ^4.4.3
-        version: 4.4.3
+        specifier: 4.6.7
+        version: 4.6.7
 
   ../extends-ssh/ubuntu-lib:
     dependencies:
+      '@types/lodash':
+        specifier: ^4.17.27
+        version: 4.17.27
       es-module-lexer:
         specifier: 2.3.1
         version: 2.3.1
       immer:
         specifier: 10.2.0
         version: 10.2.0
+      lodash:
+        specifier: ^4.18.1
+        version: 4.18.1
       mcpserver:
         specifier: workspace:*
         version: link:../../extends-mcp/libs/mcpserver
@@ -93,8 +96,8 @@ importers:
         specifier: ^1.5.5
         version: 1.5.5
       zod:
-        specifier: ^4.4.3
-        version: 4.4.3
+        specifier: 4.6.7
+        version: 4.6.7
       zustand:
         specifier: 5.0.13
         version: 5.0.13(@types/react@19.2.18)(immer@10.2.0)(react@19.2.8)
@@ -137,8 +140,8 @@ importers:
   ../extends-zustand/libs/zustand-lib:
     dependencies:
       zod:
-        specifier: ^4.4.3
-        version: 4.4.3
+        specifier: 4.6.7
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: 20.19.40
@@ -171,8 +174,8 @@ importers:
         specifier: 10.2.0
         version: 10.2.0
       zod:
-        specifier: ^4.4.3
-        version: 4.4.3
+        specifier: 4.6.7
+        version: 4.6.7
       zustand:
         specifier: 5.0.13
         version: 5.0.13(@types/react@19.2.18)(immer@10.2.0)(react@19.2.8)
@@ -195,6 +198,12 @@ importers:
 
   libs/hono-vite-config:
     dependencies:
+      eta:
+        specifier: 4.6.0
+        version: 4.6.0
+      ts-morph:
+        specifier: 28.0.0
+        version: 28.0.0
     devDependencies:
       '@hono/node-server':
         specifier: ^1.19.11
@@ -230,8 +239,8 @@ importers:
         specifier: workspace:*
         version: file:../extends-ssh/ubuntu-lib(@types/react@19.2.18)(react@19.2.8)(vite@8.2.2(@types/node@26.1.2)(esbuild@0.28.1)(tsx@4.22.4))
       zod:
-        specifier: ^4.4.3
-        version: 4.4.3
+        specifier: 4.6.7
+        version: 4.6.7
       zustand:
         specifier: 5.0.13
         version: 5.0.13(@types/react@19.2.18)(immer@10.2.0)(react@19.2.8)
@@ -727,13 +736,6 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4
-
-  '@hono/node-ws@1.3.1':
-    resolution: {integrity: sha512-vo/MwCnpJAVHBkGzWjCJ28wF45fYHAfbPZcH2rodZODHtch2GHA94KtMfusmVycTUtsLAsaNsHhtY6P8X3RQsA==}
-    engines: {node: '>=18.14.1'}
-    peerDependencies:
-      '@hono/node-server': ^1.19.11
-      hono: ^4.6.0
 
   '@hono/zod-validator@0.9.0':
     resolution: {integrity: sha512-n0ZSXmCiHVIp4Y5wlOOyZCeTd/rsawA/qW1cipB8QOYKZ9N8Tk0nZUZCXho9cu374AN4JpDNKioNKBJ/W+LBug==}
@@ -1440,6 +1442,9 @@ packages:
     resolution: {integrity: sha512-j3s9XPv8Wo1EG5/naBi4XGF0uXYQ2A3QZNI0NKWgCMxRHVrDJGlZEYymcHDHY7fquRm73P8U3c8xqJqB5yad6w==}
     engines: {node: '>=20'}
 
+  '@ts-morph/common@0.29.0':
+    resolution: {integrity: sha512-35oUmphHbJvQ/+UTwFNme/t2p3FoKiGJ5auTjjpNTop2dyREspirjMy82PLSC1pnDJ8ah1GU98hwpVt64YXQsg==}
+
   '@tybys/wasm-util@0.10.3':
     resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
 
@@ -1460,6 +1465,9 @@ packages:
 
   '@types/lodash@4.17.0':
     resolution: {integrity: sha512-t7dhREVv6dbNj0q17X12j7yDG4bD/DHYX7o5/DbDxobP0HnGPgpRz2Ej77aL7TZT3DSw13fqUTj8J4mMnqa7WA==}
+
+  '@types/lodash@4.17.27':
+    resolution: {integrity: sha512-VenMRv/eKNrspX9v3H4dbmjsrnCOYdYBG3kxXKk3dG6X+urBGcj2Prww3xw1U5K4FV/mE4h5GbWd0szEKf+9ew==}
 
   '@types/node@20.17.17':
     resolution: {integrity: sha512-/WndGO4kIfMicEQLTi/mDANUu/iVUhT7KboZPdEqqHQ4aTS+3qT3U5gIqWDFV+XouorjfgGqvKILJeHhuQgFYg==}
@@ -1518,6 +1526,10 @@ packages:
   asn1@0.2.6:
     resolution: {integrity: sha512-ix/FxPn0MDjeyJ7i/yoHGFt/EX6LyNbxSEhPPXODPL+KB0VPk86UYfL0lMdy+KCnv+fmvIzySwaK5COwqVbWTQ==}
 
+  balanced-match@4.0.4:
+    resolution: {integrity: sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==}
+    engines: {node: 18 || 20 || >=22}
+
   baseline-browser-mapping@2.11.13:
     resolution: {integrity: sha512-k9HNuUVMlqVjQ9UHzfPjIqiDbWw7WqT1AoT7GL8VwvF3r0ZfArtgiSPAlmupyNquNgOJHTuH4CKYf8ttMTWBTQ==}
     engines: {node: '>=6.0.0'}
@@ -1529,6 +1541,10 @@ packages:
   body-parser@2.3.0:
     resolution: {integrity: sha512-2cGmJupaNgg+QUwVLAucDuWuoMZ6EX9iHDRswZ5lsNYEmwPaRknMPCLZz07yTzVq/83p4o/wzbDZbBrTvGGTIw==}
     engines: {node: '>=18'}
+
+  brace-expansion@5.0.12:
+    resolution: {integrity: sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==}
+    engines: {node: 20 || >=22}
 
   browserslist@4.28.8:
     resolution: {integrity: sha512-V2NpofLblG64mfOtSgDhOJESZEGogzDMBv/q+W6oc4LXWP/q75eOXoOaaOu1EOadB9U4Bwx/e0yzbvwKH8zalA==}
@@ -1561,6 +1577,9 @@ packages:
   clsx@2.1.1:
     resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
     engines: {node: '>=6'}
+
+  code-block-writer@13.0.3:
+    resolution: {integrity: sha512-Oofo0pq3IKnsFtuHqSF7TqBfr71aeyZDVJ0HpmqB7FBM2qEigL0iPONSCZSO9pE9dZTAxANe5XHG9Uy0YMv8cg==}
 
   compute-scroll-into-view@3.1.1:
     resolution: {integrity: sha512-VRhuHOLoKYOy4UbilLbUzbYg93XLjv2PncJC50EuTWPA3gaja1UjBsUP/D/9/juV3vQFr6XBEzn9KCAHdUvOHw==}
@@ -1676,6 +1695,10 @@ packages:
 
   escape-html@1.0.3:
     resolution: {integrity: sha512-NiSupZ4OeuGwr68lGIeym/ksIZMJodUGOSCZ/FSnTxcrekbvqrgdUxlJOMpijaKZVjAJrWrGs/6Jy8OMuyj9ow==}
+
+  eta@4.6.0:
+    resolution: {integrity: sha512-lW6is4T1NFOYnmqGZIfvixqj7A7sSvScF+DN8EK6K58xI5MZ5UvYe0GjopxOXQtZvUn4eDdVuZ8XSoYWTMEKwA==}
+    engines: {node: '>=20'}
 
   etag@1.8.1:
     resolution: {integrity: sha512-aIL5Fx7mawVa300al2BnEE4iNvo1qETxLrPI/o05L7z6go7fCw1J6EQmbK4FmJ2AS7kgVF/KEZWufBfdClMcPg==}
@@ -2032,6 +2055,10 @@ packages:
     resolution: {integrity: sha512-VP79XUPxV2CigYP3jWwAUFSku2aKqBH7uTAapFWCBqutsbmDo96KY5o8uh6U+/YSIn5OxJnXp73beVkpqMIGhA==}
     engines: {node: '>=18'}
 
+  minimatch@10.2.6:
+    resolution: {integrity: sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==}
+    engines: {node: 18 || 20 || >=22}
+
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
@@ -2087,6 +2114,9 @@ packages:
   parseurl@1.3.3:
     resolution: {integrity: sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ==}
     engines: {node: '>= 0.8'}
+
+  path-browserify@1.0.1:
+    resolution: {integrity: sha512-b7uo2UCUOYZcnF/3ID0lulOJi/bafxa1xPe7ZPsammBSpjSWQkjNxlt635YGS2MiR9GjvuXCtz2emr3jbsz98g==}
 
   path-key@3.1.1:
     resolution: {integrity: sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==}
@@ -2317,6 +2347,9 @@ packages:
     resolution: {integrity: sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==}
     engines: {node: '>=0.6'}
 
+  ts-morph@28.0.0:
+    resolution: {integrity: sha512-Wp3tnZ2bzwxyTZMtgWVzXDfm7lB1Drz+y9DmmYH/L702PQhPyVrp3pkou3yIz4qjS14GY9kcpmLiOOMvl8oG1g==}
+
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
@@ -2516,18 +2549,6 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
-  ws@8.22.0:
-    resolution: {integrity: sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
-
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
 
@@ -2536,8 +2557,8 @@ packages:
     peerDependencies:
       zod: ^3.25.28 || ^4
 
-  zod@4.4.3:
-    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
   zustand@5.0.13:
     resolution: {integrity: sha512-efI2tVaVQPqtOh114loML/Z80Y4NP3yc+Ff0fYiZJPauNeWZeIp/bRFD7I9bfmCOYBh/PHxlglQ9+wvlwnPikQ==}
@@ -2894,13 +2915,13 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
-  '@hono/mcp@0.3.2(@modelcontextprotocol/sdk@1.30.0(zod@4.4.3))(hono-rate-limiter@0.5.4(hono@4.12.30))(hono@4.12.30)(zod@4.4.3)':
+  '@hono/mcp@0.3.2(@modelcontextprotocol/sdk@1.30.0(zod@4.6.7))(hono-rate-limiter@0.5.4(hono@4.12.30))(hono@4.12.30)(zod@4.6.7)':
     dependencies:
-      '@modelcontextprotocol/sdk': 1.30.0(zod@4.4.3)
+      '@modelcontextprotocol/sdk': 1.30.0(zod@4.6.7)
       hono: 4.12.30
       hono-rate-limiter: 0.5.4(hono@4.12.30)
       pkce-challenge: 5.0.1
-      zod: 4.4.3
+      zod: 4.6.7
 
   '@hono/node-server@1.19.14(hono@4.12.30)':
     dependencies:
@@ -2918,19 +2939,10 @@ snapshots:
     dependencies:
       hono: 4.12.33
 
-  '@hono/node-ws@1.3.1(@hono/node-server@1.19.17(hono@4.12.30))(hono@4.12.30)':
-    dependencies:
-      '@hono/node-server': 1.19.17(hono@4.12.30)
-      hono: 4.12.30
-      ws: 8.22.0
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  '@hono/zod-validator@0.9.0(hono@4.12.30)(zod@4.4.3)':
+  '@hono/zod-validator@0.9.0(hono@4.12.30)(zod@4.6.7)':
     dependencies:
       hono: 4.12.30
-      zod: 4.4.3
+      zod: 4.6.7
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
@@ -2959,13 +2971,13 @@ snapshots:
       eventsource-parser: 3.1.0
       jose: 6.2.4
       pkce-challenge: 5.0.1
-      zod: 4.4.3
+      zod: 4.6.7
 
   '@modelcontextprotocol/core@2.0.0':
     dependencies:
-      zod: 4.4.3
+      zod: 4.6.7
 
-  '@modelcontextprotocol/sdk@1.30.0(zod@4.4.3)':
+  '@modelcontextprotocol/sdk@1.30.0(zod@4.6.7)':
     dependencies:
       '@hono/node-server': 1.19.17(hono@4.12.33)
       ajv: 8.20.0
@@ -2982,15 +2994,15 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
-      zod: 4.4.3
-      zod-to-json-schema: 3.25.2(zod@4.4.3)
+      zod: 4.6.7
+      zod-to-json-schema: 3.25.2(zod@4.6.7)
     transitivePeerDependencies:
       - supports-color
 
   '@modelcontextprotocol/server@2.0.0':
     dependencies:
       '@modelcontextprotocol/core': 2.0.0
-      zod: 4.4.3
+      zod: 4.6.7
 
   '@msgpack/msgpack@2.8.0': {}
 
@@ -3541,9 +3553,15 @@ snapshots:
       '@scalar/helpers': 0.11.1
       nanoid: 5.1.16
       type-fest: 5.8.0
-      zod: 4.4.3
+      zod: 4.6.7
 
   '@scalar/validation@0.6.3': {}
+
+  '@ts-morph/common@0.29.0':
+    dependencies:
+      minimatch: 10.2.6
+      path-browserify: 1.0.1
+      tinyglobby: 0.2.17
 
   '@tybys/wasm-util@0.10.3':
     dependencies:
@@ -3574,6 +3592,8 @@ snapshots:
   '@types/estree@1.0.9': {}
 
   '@types/lodash@4.17.0': {}
+
+  '@types/lodash@4.17.27': {}
 
   '@types/node@20.17.17':
     dependencies:
@@ -3691,6 +3711,8 @@ snapshots:
     dependencies:
       safer-buffer: 2.1.2
 
+  balanced-match@4.0.4: {}
+
   baseline-browser-mapping@2.11.13: {}
 
   bcrypt-pbkdf@1.0.2:
@@ -3710,6 +3732,10 @@ snapshots:
       type-is: 2.1.0
     transitivePeerDependencies:
       - supports-color
+
+  brace-expansion@5.0.12:
+    dependencies:
+      balanced-match: 4.0.4
 
   browserslist@4.28.8:
     dependencies:
@@ -3741,6 +3767,8 @@ snapshots:
       restore-cursor: 5.1.0
 
   clsx@2.1.1: {}
+
+  code-block-writer@13.0.3: {}
 
   compute-scroll-into-view@3.1.1: {}
 
@@ -3871,6 +3899,8 @@ snapshots:
   escalade@3.2.0: {}
 
   escape-html@1.0.3: {}
+
+  eta@4.6.0: {}
 
   etag@1.8.1: {}
 
@@ -4172,6 +4202,10 @@ snapshots:
 
   mimic-function@5.0.1: {}
 
+  minimatch@10.2.6:
+    dependencies:
+      brace-expansion: 5.0.12
+
   ms@2.1.3: {}
 
   nan@2.28.0:
@@ -4215,6 +4249,8 @@ snapshots:
       mimic-function: 5.0.1
 
   parseurl@1.3.3: {}
+
+  path-browserify@1.0.1: {}
 
   path-key@3.1.1: {}
 
@@ -4510,6 +4546,11 @@ snapshots:
 
   toidentifier@1.0.1: {}
 
+  ts-morph@28.0.0:
+    dependencies:
+      '@ts-morph/common': 0.29.0
+      code-block-writer: 13.0.3
+
   tslib@2.8.1:
     optional: true
 
@@ -4537,13 +4578,15 @@ snapshots:
 
   ubuntu-lib@file:../extends-ssh/ubuntu-lib(@types/react@19.2.18)(react@19.2.8)(vite@8.2.2(@types/node@26.1.2)(esbuild@0.28.1)(tsx@4.22.4)):
     dependencies:
+      '@types/lodash': 4.17.27
       es-module-lexer: 2.3.1
       immer: 10.2.0
+      lodash: 4.18.1
       mcpserver: link:../extends-mcp/libs/mcpserver
       node-ssh: 13.2.1
       peerjs: 1.5.5
       vite: 8.2.2(@types/node@26.1.2)(esbuild@0.28.1)(tsx@4.22.4)
-      zod: 4.4.3
+      zod: 4.6.7
       zustand: 5.0.13(@types/react@19.2.18)(immer@10.2.0)(react@19.2.8)
       zustand-lib: link:../extends-zustand/libs/zustand-lib
     transitivePeerDependencies:
@@ -4635,15 +4678,13 @@ snapshots:
 
   wrappy@1.0.2: {}
 
-  ws@8.22.0: {}
-
   yallist@3.1.1: {}
 
-  zod-to-json-schema@3.25.2(zod@4.4.3):
+  zod-to-json-schema@3.25.2(zod@4.6.7):
     dependencies:
-      zod: 4.4.3
+      zod: 4.6.7
 
-  zod@4.4.3: {}
+  zod@4.6.7: {}
 
   zustand@5.0.13(@types/react@19.2.18)(immer@10.2.0)(react@19.2.8):
     optionalDependencies:

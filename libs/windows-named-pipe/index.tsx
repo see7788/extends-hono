@@ -1,7 +1,7 @@
 /** @jsxImportSource hono/jsx */
 import { Hono } from "hono";
 import * as React from "hono/jsx";
-import Pm2 from "ubuntu-lib/Pm2.ts";
+import Pm2 from "ubuntu-lib/pm2/index";
 import store from "./store.ts";
 import type { NodeServiceState } from "./nodeService.ts";
 
@@ -12,8 +12,6 @@ const dateText = (value?: string) => value
 const pm2 = new Pm2();
 
 /** 关闭页面消费者持有的远程 PM2 SSH 会话。 */
-export const dispose = () => pm2.dispose();
-
 const page = (services: NodeServiceState[], windowsAvailable: boolean) => (
   <html lang="zh-CN">
     <head>
@@ -212,7 +210,7 @@ const router = new Hono().basePath("/node-service")
   .post("/service/:id/stop", async context => (
     context.json(await store.getState().nodeServiceActions.stop(context.req.param("id")))
   ))
-  .get("/pm2/state", async context => context.json(await pm2.isRunning()))
+  .get("/pm2/state", async context => context.json(await pm2.list()))
   .post("/pm2/:id/stop", async context => (
     context.json(await pm2.stop(Number(context.req.param("id"))))
   ));

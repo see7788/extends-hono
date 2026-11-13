@@ -2,7 +2,7 @@ import { serve, type ServerType } from "@hono/node-server";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { createConnection, createServer, type Server as ControlServer } from "node:net";
-import router, { dispose as routerDispose } from "./index.tsx";
+import router from "./index.tsx";
 import { z } from "zod";
 
 const stateSchema = z.object({
@@ -155,7 +155,6 @@ export const close = async () => {
     new Promise<void>((resolve, reject) => current.control.close(error => error ? reject(error) : resolve())),
     new Promise<void>((resolve, reject) => current.http.close(error => error ? reject(error) : resolve())),
   ]);
-  routerDispose();
   const errors = results
     .filter((result): result is PromiseRejectedResult => result.status === "rejected")
     .map(result => result.reason);
